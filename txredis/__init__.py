@@ -38,7 +38,7 @@ class RedisAPI(object):
 
     def __connection_lost(self, deferred):
         if self.__factory.size == 0:
-            self.__job.stop()
+            self.__task.stop()
             deferred.callback(True)
 
     def disconnect(self):
@@ -50,8 +50,8 @@ class RedisAPI(object):
                 pass
 
         d = defer.Deferred()
-        self.__job = task.LoopingCall(self.__connection_lost, d)
-        self.__job.start(1)
+        self.__task = task.LoopingCall(self.__connection_lost, d)
+        self.__task.start(1)
         return d
 
     def __repr__(self):
