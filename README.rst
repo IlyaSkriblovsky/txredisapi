@@ -9,7 +9,7 @@ About
 An asynchronous Python client for the Redis database, based on Twisted.
 
 The ``txredis`` package is an improvement of the original `redis protocol
-for twisted <http://code.google.com/p/redis/>`_, written by Ludovico Magnocavallo.
+for twisted <http://code.google.com/p/redis/>`_, written by Dorian Raymer and Ludovico Magnocavallo.
 
 The `Redis Command Reference <http://code.google.com/p/redis/wiki/CommandReference>`_ is
 the same in both packages.
@@ -36,6 +36,6 @@ Thanks to (in no particular order):
 
   - Testing and using it in the ``RestMQ`` package
 
-- Ludovico Magnocavallo
+- Dorian Raymer and Ludovico Magnocavallo
 
-  - The author of the original ``redis protocol for twisted``.
+  - The authors of the original ``redis protocol for twisted``.
