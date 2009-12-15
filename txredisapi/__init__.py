@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from txredis.protocol import RedisProtocol
+from txredisapi.protocol import RedisProtocol
 from twisted.internet import task, defer, reactor, protocol
 
 class RedisAPI(object):

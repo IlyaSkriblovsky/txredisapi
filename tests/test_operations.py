@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredis
+import txredisapi
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 
@@ -23,7 +23,7 @@ redis_port=6379
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisConnection(self):
-        rapi = yield txredis.RedisConnection(redis_host, redis_port)
+        rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
         
         # test set() operation
         for value in ("foo", "bar"):

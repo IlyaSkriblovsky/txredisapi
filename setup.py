@@ -18,12 +18,12 @@ import sys
 import distutils.core
 
 distutils.core.setup(
-    name="txredis",
+    name="txredisapi",
     version="0.2",
-    packages = ["txredis"],
-    author="fiorix",
+    packages = ["txredisapi"],
+    author="Alexandre Fiori",
     author_email="fiorix@gmail.com",
-    url="http://github.com/fiorix/txredis",
+    url="http://github.com/fiorix/txredisapi",
     license="http://www.apache.org/licenses/LICENSE-2.0",
     description="twisted client protocol for redis",
 )

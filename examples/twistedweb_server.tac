@@ -17,7 +17,7 @@
 # run:
 #  twistd -ny twistwedweb_server.tac
 
-import txredis
+import txredisapi
 from twisted.internet import defer
 from twisted.web import xmlrpc, server
 from twisted.web.resource import Resource
@@ -87,7 +87,7 @@ class XmlrpcHandler(BaseHandler, xmlrpc.XMLRPC):
 
 
 # redis connection
-_db = txredis.lazyRedisConnectionPool()
+_db = txredisapi.lazyRedisConnectionPool()
 
 # http resources
 root = Root()

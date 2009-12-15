@@ -19,7 +19,7 @@
 # run:
 #  twistd -ny cyclone_server.tac
 
-import txredis
+import txredisapi
 import cyclone.web
 from twisted.internet import defer
 from twisted.application import service, internet
@@ -80,7 +80,7 @@ class WebRedis(cyclone.web.Application):
         ]
 
         settings = {
-            "db": txredis.lazyRedisConnectionPool(),
+            "db": txredisapi.lazyRedisConnectionPool(),
             #"static_path": "./static",
         }
 
