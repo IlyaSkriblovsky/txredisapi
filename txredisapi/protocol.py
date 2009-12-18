@@ -94,6 +94,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
           "$" bulk data
           "*" multi-bulk data
         """
+        if not line:
+            return
         self.resetTimeout()
         token = line[0] # first byte indicates reply type
         data = line[1:]
