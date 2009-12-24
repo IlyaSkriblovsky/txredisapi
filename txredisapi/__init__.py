@@ -29,12 +29,13 @@ class RedisAPI(object):
     def __getattr__(self, method):
         try:
             assert self.__factory.size
-            conn = self.__factory.pool[self.__factory.id % self.__factory.size]
+            conn = self.__factory.pool[self.__factory.idx % self.__factory.size]
             function = getattr(conn, method)
-            self.__factory.id += 1
+            self.__factory.idx += 1
         except:
             return self.__disconnected
-        return function
+        else:
+            return function
 
     def __connection_lost(self, deferred):
         if self.__factory.size == 0:
@@ -69,7 +70,7 @@ class _RedisFactory(protocol.ReconnectingClientFactory):
     protocol = RedisProtocol
 
     def __init__(self, pool_size):
-        self.id = 0
+        self.idx = 0
         self.size = 0
         self.pool = []
         self.pool_size = pool_size
