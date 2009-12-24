@@ -13,56 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import types
+from txredisapi import api
 from txredisapi.protocol import RedisProtocol
 from twisted.internet import task, defer, reactor, protocol
-
-class RedisAPI(object):
-    def __init__(self, factory):
-        self.__factory = factory
-        self._connected = factory.deferred
-
-    def __disconnected(self, *args, **kwargs):
-        deferred = defer.Deferred()
-        deferred.errback(RuntimeWarning("not connected"))
-        return deferred
-
-    def __getattr__(self, method):
-        try:
-            assert self.__factory.size
-            conn = self.__factory.pool[self.__factory.idx % self.__factory.size]
-            function = getattr(conn, method)
-            self.__factory.idx += 1
-        except:
-            return self.__disconnected
-        else:
-            return function
-
-    def __connection_lost(self, deferred):
-        if self.__factory.size == 0:
-            self.__task.stop()
-            deferred.callback(True)
-
-    def disconnect(self):
-        self.__factory.continueTrying = 0
-        for conn in self.__factory.pool:
-            try:
-                conn.transport.loseConnection()
-            except:
-                pass
-
-        d = defer.Deferred()
-        self.__task = task.LoopingCall(self.__connection_lost, d)
-        self.__task.start(1)
-        return d
-
-    def __repr__(self):
-        try:
-            cli = self.__factory.pool[0].transport.getPeer()
-        except:
-            info = "not connected"
-        else:
-            info = "%s:%s - %d connection(s)" % (cli.host, cli.port, self.__factory.size)
-        return "<Redis: %s>" % info
 
 
 class _RedisFactory(protocol.ReconnectingClientFactory):
@@ -75,7 +29,7 @@ class _RedisFactory(protocol.ReconnectingClientFactory):
         self.pool = []
         self.pool_size = pool_size
         self.deferred = defer.Deferred()
-        self.API = RedisAPI(self)
+        self.API = api.RedisAPI(self)
 
     def append(self, conn):
         self.pool.append(conn)
@@ -91,12 +45,44 @@ class _RedisFactory(protocol.ReconnectingClientFactory):
             pass
         self.size = len(self.pool)
 
+    @property
+    def connection(self):
+        assert self.size
+        conn = self.pool[self.idx % self.size]
+        self.idx += 1
+        return conn
+
+
 def _Connection(host, port, reconnect, pool_size, lazy):
     factory = _RedisFactory(pool_size)
     factory.continueTrying = reconnect
     for x in xrange(pool_size):
         reactor.connectTCP(host, port, factory)
     return (lazy is True) and factory.API or factory.deferred
+
+def _ShardingConnection(hosts, reconnect, pool_size, lazy):
+    err = "please use a list or tuple with host:port"
+    if not isinstance(hosts, (types.ListType, types.TupleType)):
+        raise ValueError(err)
+
+    connections = []
+    for item in hosts:
+        try:
+            host, port = item.split(":")
+            port = int(port)
+        except:
+            raise ValueError(err)
+        else:
+            d = _Connection(host, port, reconnect, pool_size, lazy)
+            connections.append(d)
+
+    if lazy is True:
+        return api.RedisShardingAPI(connections)
+    else:
+        deferred = defer.DeferredList(connections)
+        api.RedisShardingAPI(deferred)
+        return deferred
+
 
 def RedisConnection(host="localhost", port=6379, reconnect=True):
     return _Connection(host, port, reconnect, pool_size=1, lazy=False)
@@ -109,3 +95,15 @@ def RedisConnectionPool(host="localhost", port=6379, reconnect=True, pool_size=5
 
 def lazyRedisConnectionPool(host="localhost", port=6379, reconnect=True, pool_size=5):
     return _Connection(host, port, reconnect, pool_size, lazy=True)
+
+def RedisShardingConnection(hosts, reconnect=True):
+    return _ShardingConnection(hosts, reconnect, pool_size=1, lazy=False)
+
+def RedisShardingConnectionPool(hosts, reconnect=True, pool_size=5):
+    return _ShardingConnection(hosts, reconnect, pool_size, lazy=False)
+
+def lazyRedisShardingConnection(hosts, reconnect=True):
+    return _ShardingConnection(hosts, reconnect, pool_size=1, lazy=True)
+
+def lazyRedisShardingConnectionPool(hosts, reconnect=True, pool_size=5):
+    return _ShardingConnection(hosts, reconnect, pool_size, lazy=True)
