@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import types
 import operator
 import functools
 import collections
@@ -62,6 +63,7 @@ class RedisAPI(object):
             info = "%s:%s - %d connection(s)" % (cli.host, cli.port, self.__factory.size)
         return "<Redis: %s>" % info
 
+
 class RedisShardingAPI(object):
     def __init__(self, connections):
         if isinstance(connections, defer.DeferredList):
@@ -74,9 +76,17 @@ class RedisShardingAPI(object):
         self.__ring = HashRing(connections)
         return self
 
-    def __wrap(self, m, *a, **kw):
-        f = getattr(self.__ring(a[0]), m)
-        return f(*a, **kw)
+    def __wrap(self, method, *args, **kwargs):
+        try:
+            key = args[0]
+            assert isinstance(key, types.StringTypes)
+        except:
+            raise ValueError("method '%s' requires key as first argument" % method)
+
+        node = self.__ring(key)
+        #print "node for '%s' is: %s" % (key, node)
+        f = getattr(node, method)
+        return f(*args, **kwargs)
         
     def __getattr__(self, method):
         if method in [
@@ -89,6 +99,8 @@ class RedisShardingAPI(object):
             "lrem", "sadd", "srem", 
             "sismember", "smembers", ]:
             return functools.partial(self.__wrap, method)
+        else:
+            raise NotImplementedError("method '%s' cannot be sharded" % method)
 
     @defer.inlineCallbacks
     def mget(self, *args):

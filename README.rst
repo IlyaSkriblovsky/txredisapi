@@ -13,6 +13,13 @@ for twisted <http://pypi.python.org/pypi/txredis/>`_, written by Dorian Raymer a
 
 For more information, see the `Redis Command Reference <http://code.google.com/p/redis/wiki/CommandReference>`_.
 
+Features
+========
+- Lazy Connections
+- Connection Pools
+- Automatic Sharding
+- Automatic Reconnection
+
 Installation
 ============
 You need `setuptools <http://peak.telecommunity.com/DevCenter/setuptools>`_
@@ -33,6 +40,7 @@ Thanks to (in no particular order):
 - Gleicon Moraes
 
   - Testing and using it in the `RestMQ <http://github.com/gleicon/restmq>`_ web service
+  - For writing the Consistent Hashing algorithm used for sharding
 
 - Dorian Raymer and Ludovico Magnocavallo
 

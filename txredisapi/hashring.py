@@ -40,6 +40,7 @@ class HashRing(object):
             return [None, None]
         crc = zlib.crc32(key)
         idx = bisect.bisect(self.sorted_keys, crc)
+        idx = min(idx, (self.replicas * len(self.nodes))-1) # prevents out of range index
         return [self.ring[self.sorted_keys[idx]], idx]
 
     def iter_nodes(self, key):
