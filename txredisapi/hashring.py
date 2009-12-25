@@ -49,15 +49,8 @@ class HashRing(object):
         node, pos = self.get_node_pos(key)
         for k in self.sorted_keys[pos:]:
             #yield self.ring[k]
+            # needs fix
             pass        
 
     def __call__(self, key):
         return self.get_node(key)
-   
-
-if __name__ == "__main__":
-    ch = HashRing(["teste","teste2","teste3"])
-    print ch.get_node("alexandre")
-    print ch.get_node("gleicon")
-    print ch.get_node("asdasjkdjkaskjdaskjdaskjgleicon")
-    print ch.get_node("aiaiaiaia_asdasjkdjkaskjdaskjdaskjgleicon")

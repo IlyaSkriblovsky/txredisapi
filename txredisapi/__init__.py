@@ -16,7 +16,7 @@
 import types
 from txredisapi import api
 from txredisapi.protocol import RedisProtocol
-from twisted.internet import task, defer, reactor, protocol
+from twisted.internet import defer, reactor, protocol
 
 
 class _RedisFactory(protocol.ReconnectingClientFactory):

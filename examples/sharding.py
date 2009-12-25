@@ -6,7 +6,9 @@ from twisted.internet import defer, reactor
 
 @defer.inlineCallbacks
 def main():
-    conn = yield txredisapi.RedisShardingConnection(("10.0.0.1:6379", "10.0.0.2:6379"))
+    conn = yield txredisapi.RedisShardingConnection(["localhost:6379"])
+    print conn
+    #conn = yield txredisapi.RedisShardingConnection(("10.0.0.1:6379", "10.0.0.2:6379"))
     #conn = yield txredisapi.RedisShardingConnectionPool(("10.0.0.1:6379", "10.0.0.2:6379"))
 
     keys = ["test:%d" % x for x in xrange(100)]

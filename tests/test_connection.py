@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import txredisapi
+from txredisapi import api
 from twisted.trial import unittest
 from twisted.internet import base, defer, reactor
 
@@ -28,7 +29,7 @@ class TestRedisConnectionMethods(unittest.TestCase):
         conn = txredisapi.RedisConnection(redis_host, redis_port)
         self.assertEqual(isinstance(conn, defer.Deferred), True)
         rapi = yield conn
-        self.assertEqual(isinstance(rapi, txredisapi.RedisAPI), True)
+        self.assertEqual(isinstance(rapi, api.RedisAPI), True)
         disconnected = yield rapi.disconnect()
         self.assertEqual(disconnected, True)
         
@@ -38,7 +39,7 @@ class TestRedisConnectionMethods(unittest.TestCase):
         conn = txredisapi.RedisConnectionPool(redis_host, redis_port, pool_size=2)
         self.assertEqual(isinstance(conn, defer.Deferred), True)
         rapi = yield conn
-        self.assertEqual(isinstance(rapi, txredisapi.RedisAPI), True)
+        self.assertEqual(isinstance(rapi, api.RedisAPI), True)
         disconnected = yield rapi.disconnect()
         self.assertEqual(disconnected, True)
 
@@ -46,7 +47,7 @@ class TestRedisConnectionMethods(unittest.TestCase):
     def test_lazyRedisConnection(self):
         # lazyRedisConnection returns RedisAPI
         rapi = txredisapi.lazyRedisConnection(redis_host, redis_port)
-        self.assertEqual(isinstance(rapi, txredisapi.RedisAPI), True)
+        self.assertEqual(isinstance(rapi, api.RedisAPI), True)
         yield rapi._connected
         disconnected = yield rapi.disconnect()
         self.assertEqual(disconnected, True)
@@ -55,7 +56,23 @@ class TestRedisConnectionMethods(unittest.TestCase):
     def test_lazyRedisConnectionPool(self):
         # lazyRedisConnection returns RedisAPI
         rapi = txredisapi.lazyRedisConnectionPool(redis_host, redis_port, pool_size=2)
-        self.assertEqual(isinstance(rapi, txredisapi.RedisAPI), True)
+        self.assertEqual(isinstance(rapi, api.RedisAPI), True)
         yield rapi._connected
+        disconnected = yield rapi.disconnect()
+        self.assertEqual(disconnected, True)
+
+    @defer.inlineCallbacks
+    def test_RedisShardingConnection(self):
+        addr = "%s:%d" % (redis_host, redis_port)
+        rapi = yield txredisapi.RedisShardingConnection([addr,])
+        self.assertEqual(isinstance(rapi, api.RedisShardingAPI), True)
+        disconnected = yield rapi.disconnect()
+        self.assertEqual(disconnected, True)
+
+    @defer.inlineCallbacks
+    def test_RedisShardingConnectionPool(self):
+        addr = "%s:%d" % (redis_host, redis_port)
+        rapi = yield txredisapi.RedisShardingConnectionPool([addr,], pool_size=5)
+        self.assertEqual(isinstance(rapi, api.RedisShardingAPI), True)
         disconnected = yield rapi.disconnect()
         self.assertEqual(disconnected, True)

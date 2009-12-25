@@ -88,6 +88,7 @@ class XmlrpcHandler(BaseHandler, xmlrpc.XMLRPC):
 
 # redis connection
 _db = txredisapi.lazyRedisConnectionPool()
+#_db = txredisapi.lazyRedisShardingConnectionPool(["10.0.0.1:6379", "10.0.0.2:6379"])
 
 # http resources
 root = Root()
