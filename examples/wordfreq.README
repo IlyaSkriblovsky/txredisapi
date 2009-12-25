@@ -1,0 +1,2 @@
+wordfreq is a test to check consistent hashing distribution between the servers.
+Use it with some big text file as python wordfreq.py <txtfile>
