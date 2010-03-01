@@ -45,3 +45,7 @@ Thanks to (in no particular order):
 - Dorian Raymer and Ludovico Magnocavallo
 
   - The authors of the original `redis protocol for twisted <http://pypi.python.org/pypi/txredis/>`_.
+
+- Vanderson Mota
+
+  - Patching setup.py and PyPi maintenance
