@@ -33,7 +33,9 @@ class HashRing(object):
             self.sorted_keys.remove(crckey)
         
     def get_node(self, key):
-        return self.get_node_pos(key)[0]
+        n, i = self.get_node_pos(key)
+        return n
+    #self.get_node_pos(key)[0]
 
     def get_node_pos(self, key):
         if len(self.ring) == 0:
@@ -44,13 +46,10 @@ class HashRing(object):
         return [self.ring[self.sorted_keys[idx]], idx]
 
     def iter_nodes(self, key):
-        if len(self.ring) == 0:
-            return [None, None]
+        if len(self.ring) == 0: yield None, None
         node, pos = self.get_node_pos(key)
         for k in self.sorted_keys[pos:]:
-            #yield self.ring[k]
-            # needs fix
-            pass        
-
+            yield k, self.ring[k]
+    
     def __call__(self, key):
         return self.get_node(key)
