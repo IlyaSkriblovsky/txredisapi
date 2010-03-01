@@ -15,12 +15,13 @@
 # limitations under the License.
 
 import sys
-import distutils.core
+import setuptools
 
-distutils.core.setup(
+setuptools.setup(
     name="txredisapi",
     version="0.2",
-    packages = ["txredisapi"],
+    packages=["txredisapi"],
+    #install_requires=["twisted"],
     author="Alexandre Fiori",
     author_email="fiorix@gmail.com",
     url="http://github.com/fiorix/txredisapi",
