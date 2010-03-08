@@ -134,9 +134,9 @@ class RedisShardingAPI(object):
 
         result = []
         response = yield defer.DeferredList(deferreds)
-
-        for (ignore, values) in response:
-            if not isinstance(values, Exception): result += values
+        for (success, values) in response:
+            if success:
+                result += values
 
         defer.returnValue(result)
 
