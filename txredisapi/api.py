@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import types
 import operator
 import functools
@@ -97,7 +98,7 @@ class RedisShardingAPI(object):
             node = self.__ring(g.groups()[0])
         else:
             node = self.__ring(key)
-        #print "node for '%s' is: %s" % (key, node)
+        print "node for '%s' is: %s" % (key, node)
         f = getattr(node, method)
         return f(*args, **kwargs)
         
@@ -128,13 +129,15 @@ class RedisShardingAPI(object):
 
         deferreds = []
         for node, keys in group.items():
-            deferreds.append(node.mget(*keys))
+            nd=node.mget(*keys)
+            deferreds.append(nd)
 
         result = []
         response = yield defer.DeferredList(deferreds)
+
         for (ignore, values) in response:
-            result += values
-    
+            if not isinstance(values, Exception): result += values
+
         defer.returnValue(result)
 
     def __repr__(self):
