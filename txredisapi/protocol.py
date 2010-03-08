@@ -570,5 +570,130 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     def auth(self, passwd):
         self._write('AUTH %s\r\n' % passwd)
         return self.get_response()
+   
+   # commands operating on sorted sets
+    def zadd(self, name, score, member):
+        """
+        """
+        value = self._encode(member)
+        self._write('ZADD %s %s\r\n' % (
+            name, score, value
+        ))
+        return self.get_response()
+        
+    def zrem(self, key, member):
+        """
+        """
+        value = self._encode(value)
+        self._write('ZREM %s %s\r\n' % (
+            key, member
+        ))
+        return self.get_response()
     
+    def zincr(self, key, member, incr=1):
+        """
+        """
+        value = self._encode(value)
+        self._write('ZINCRBY %s %s %s\r\n' % (
+            key, incr, member
+        ))
+        return self.get_response()
+
+    def zrange(self, key, start, end, withscores=False):
+        """
+        """
+        if withscores:
+            self._write('ZRANGE %s %s %s withscores\r\n' % (name, start, end))
+        else:
+            self._write('ZRANGE %s %s %s\r\n' % (name, start, end))
+
+        return self.get_response()
+   
+    def zrevrange(self, key, start, end, withscores=False):
+        """
+        """
+        if withscores:
+            self._write('ZREVRANGE %s %s %s withscores\r\n' % (name, start, end))
+        else:
+            self._write('ZREVRANGE %s %s %s\r\n' % (name, start, end))
+
+        return self.get_response()
     
+    def zrangebyscore(self, key, min=0, max=2, withscores=False, limit=False, offset=0, count=1):
+        """
+            ZRANGEBYSCORE key min max [LIMIT offset count] (Redis >= 1.1)
+
+            ZRANGEBYSCORE key min max [LIMIT offset count] [WITHSCORES] (Redis >= 1.3.4)
+
+            Time complexity: O(log(N))+O(M) with N being the number of elements in the sorted set and M the number of elements returned by the command, so if M is constant (for instance you always ask for the first ten elements with LIMIT) you can consider it O(log(N))
+
+            Return the all the elements in the sorted set at key with a score between min and max (including elements with score equal to min or max).
+            The elements having the same score are returned sorted lexicographically as ASCII strings (this follows from a property of Redis sorted sets and does not involve further computation).
+            Using the optional LIMIT it's possible to get only a range of the matching elements in an SQL-alike way. Note that if offset is large the commands needs to traverse the list for offset elements and this adds up to the O(M) figure.
+            Return value
+
+            Multi bulk reply, specifically a list of elements in the specified score range.
+        """
+        cmd = "ZRANGEBYSCORE %s %s %s" % (key, min, max)
+        if limit:
+                cmd=cmd + " LIMIT %s %s" % (offset, count)
+        
+        if withscores:
+                cmd=cmd + " WITHSCORES"
+
+        self._write(cmd)
+
+        return self.get_response()
+
+    def zremrangebyscore(self, key, minrange=0, maxrange=2):
+        """
+            ZREMRANGEBYSCORE key min max (Redis >= 1.1)
+
+            Time complexity: O(log(N))+O(M) with N being the number of elements in the sorted set and M the number of elements removed by the operation
+
+            Remove all the elements in the sorted set at key with a score between min and max (including elements with score equal to min or max).
+            Return value
+
+            Integer reply, specifically the number of elements removed.
+        """
+        cmd = "ZREMRANGEBYSCORE %s %s %s" % (key, minrange, maxrange)
+
+        self._write(cmd)
+
+        return self.get_response()
+    
+    def zcard(self, key):
+        """
+                ZCARD key (Redis >= 1.1)
+
+                Time complexity O(1)
+
+                Return the sorted set cardinality (number of elements). If the key does not exist 0 is returned, like for empty sorted sets.
+                Return value
+
+                Integer reply, specifically:
+
+                the cardinality (number of elements) of the set as an integer.
+        """
+        value = self._encode(member)
+        self._write('ZCARD %s\r\n' % (key))
+        return self.get_response()
+    
+    def zscore(self, key, element):
+        """
+            ZSCORE key element (Redis >= 1.1)
+
+            Time complexity O(1)
+
+            Return the score of the specified element of the sorted set at key. If the specified element does not exist in the sorted set, or the key does not exist at all, a special 'nil' value is returned.
+            Return value
+
+            Bulk reply
+
+            the score (a double precision floating point number) represented as string.
+        """
+        value = self._encode(member)
+        self._write('ZSCORE %s %s\r\n' % (key, element))
+        return self.get_response()
+
+

@@ -19,6 +19,8 @@ import functools
 import collections
 from twisted.internet import task, defer
 from txredisapi.hashring import HashRing
+import re
+_findhash = re.compile('.+\{(.*)\}.*', re.I)
 
 class RedisAPI(object):
     def __init__(self, factory):
@@ -59,10 +61,10 @@ class RedisAPI(object):
             cli = self._factory.pool[0].transport.getPeer()
         except:
             info = "not connected"
+            return info
         else:
             info = "%s:%s - %d connection(s)" % (cli.host, cli.port, self._factory.size)
-        return "<Redis: %s>" % info
-
+            return info
 
 class RedisShardingAPI(object):
     def __init__(self, connections):
@@ -89,7 +91,12 @@ class RedisShardingAPI(object):
         except:
             raise ValueError("method '%s' requires key as first argument" % method)
 
-        node = self.__ring(key)
+        g = _findhash.match(key)
+
+        if g != None and len(g.groups()) > 0:
+            node = self.__ring(g.groups()[0])
+        else:
+            node = self.__ring(key)
         #print "node for '%s' is: %s" % (key, node)
         f = getattr(node, method)
         return f(*args, **kwargs)
@@ -103,7 +110,11 @@ class RedisShardingAPI(object):
             "llen", "lrange", "ltrim",
             "lindex", "pop", "lset",
             "lrem", "sadd", "srem", 
-            "sismember", "smembers", ]:
+            "sismember", "smembers", 
+            "zadd", "zrem", "zincr",
+            "zrange", "zrevrange", "zrangebyscore",
+            "zremrangebyscore", "zcard", "zscore",
+            ]:
             return functools.partial(self.__wrap, method)
         else:
             raise NotImplementedError("method '%s' cannot be sharded" % method)
@@ -135,4 +146,4 @@ class RedisShardingAPI(object):
                 pass
             else:
                 nodes.append("%s:%s/%d" % (cli.host, cli.port, conn._factory.size))
-            return "<RedisSharding: %s>" % ", ".join(nodes)
+        return "<RedisSharding: %s>" % ", ".join(nodes)
