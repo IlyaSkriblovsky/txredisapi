@@ -98,7 +98,7 @@ class RedisShardingAPI(object):
             node = self.__ring(g.groups()[0])
         else:
             node = self.__ring(key)
-        print "node for '%s' is: %s" % (key, node)
+        #print "node for '%s' is: %s" % (key, node)
         f = getattr(node, method)
         return f(*args, **kwargs)
         
