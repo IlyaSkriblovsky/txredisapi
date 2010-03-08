@@ -20,12 +20,12 @@ import collections
 from twisted.internet import task, defer
 from txredisapi.hashring import HashRing
 import re
+_findhash = re.compile('.+\{(.*)\}.*', re.I)
 
 class RedisAPI(object):
     def __init__(self, factory):
         self._factory = factory
         self._connected = factory.deferred
-        self.findhash = re.compile('.+\{(.*)\}.*', re.I)
 
     def __disconnected(self, *args, **kwargs):
         deferred = defer.Deferred()
@@ -61,10 +61,10 @@ class RedisAPI(object):
             cli = self._factory.pool[0].transport.getPeer()
         except:
             info = "not connected"
+            return info
         else:
             info = "%s:%s - %d connection(s)" % (cli.host, cli.port, self._factory.size)
-        return "<Redis: %s>" % info
-
+            return info
 
 class RedisShardingAPI(object):
     def __init__(self, connections):
@@ -91,9 +91,9 @@ class RedisShardingAPI(object):
         except:
             raise ValueError("method '%s' requires key as first argument" % method)
 
-        g = self.findhash(key)
+        g = _findhash.match(key)
 
-        if g != None and len(g) > 0:
+        if g != None and len(g.groups()) > 0:
             node = self.__ring(g.groups()[0])
         else:
             node = self.__ring(key)
@@ -146,4 +146,4 @@ class RedisShardingAPI(object):
                 pass
             else:
                 nodes.append("%s:%s/%d" % (cli.host, cli.port, conn._factory.size))
-            return "<RedisSharding: %s>" % ", ".join(nodes)
+        return "<RedisSharding: %s>" % ", ".join(nodes)
