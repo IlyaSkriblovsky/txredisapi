@@ -19,11 +19,13 @@ import functools
 import collections
 from twisted.internet import task, defer
 from txredisapi.hashring import HashRing
+import re
 
 class RedisAPI(object):
     def __init__(self, factory):
         self._factory = factory
         self._connected = factory.deferred
+        self.findhash = re.compile('.+\{(.*)\}.*', re.I)
 
     def __disconnected(self, *args, **kwargs):
         deferred = defer.Deferred()
@@ -89,7 +91,12 @@ class RedisShardingAPI(object):
         except:
             raise ValueError("method '%s' requires key as first argument" % method)
 
-        node = self.__ring(key)
+        g = self.findhash(key)
+
+        if g != None and len(g) > 0:
+            node = self.__ring(g.groups()[0])
+        else:
+            node = self.__ring(key)
         #print "node for '%s' is: %s" % (key, node)
         f = getattr(node, method)
         return f(*args, **kwargs)
@@ -103,7 +110,11 @@ class RedisShardingAPI(object):
             "llen", "lrange", "ltrim",
             "lindex", "pop", "lset",
             "lrem", "sadd", "srem", 
-            "sismember", "smembers", ]:
+            "sismember", "smembers", 
+            "zadd", "zrem", "zincr",
+            "zrange", "zrevrange", "zrangebyscore",
+            "zremrangebyscore", "zcard", "zscore",
+            ]:
             return functools.partial(self.__wrap, method)
         else:
             raise NotImplementedError("method '%s' cannot be sharded" % method)
