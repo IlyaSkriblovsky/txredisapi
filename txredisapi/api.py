@@ -114,7 +114,10 @@ class RedisShardingAPI(object):
             "sismember", "smembers", 
             "zadd", "zrem", "zincr",
             "zrange", "zrevrange", "zrangebyscore",
-            "zremrangebyscore", "zcard", "zscore",
+            "zremrangebyscore", "zcard", "zscore", 
+            "hget", "hset", "hdel", "hincrby", "hlen", 
+            "hkeys", "hvals", "hgetall", "hexists", "hmget", "hmset", 
+            "publish"
             ]:
             return functools.partial(self.__wrap, method)
         else:

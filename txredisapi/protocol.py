@@ -695,5 +695,112 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         value = self._encode(member)
         self._write('ZSCORE %s %s\r\n' % (key, element))
         return self.get_response()
+    
+    # HASH functions
 
+    def hset(self, key, hkey, hvalue, preserve=False):
+        """
+        Set the hash field to the specified value. Creates the hash if needed
+        """
+        if preserve: command = 'HSETNX'
+        else: command = 'HSET'
+
+        hvalue = self._encode(hvalue)
+        self._write('%s %s %s %s\r\n%s\r\n' % (command, key, hkey, len(hvalue), hvalue))
+        return self.get_response()
+    
+    def hget(self, key, hkey):
+        """
+        Retrieve the value of the specified hash field.
+        """
+        self._write('HGET %s %s\r\n%s\r\n' % (key, len(hkey), hkey))
+        return self.get_response()
+    
+    def hdel(self, key, hkey):
+        """
+        Remove the specified field from a hash
+        """
+        self._write('HDEL %s %s\r\n%s\r\n' % (key, len(hkey), hkey))
+        return self.get_response()
+    
+    def hincrby(self, key, hkey, amt=1):
+        """
+        Increment the integer value of the hash at key on field with integer (key, hash_key, ammount)
+        """
+        self._write('HINCRBY %s %s %s\r\n' % (key, hkey, amt))
+        return self.get_response()
+    
+    def hlen(self, key):
+        """
+        Return the number of entries (fields) contained in the hash stored at key. If the specified key does not exist, 0 is returned assuming an empty hash.
+        """
+        self._write('HLEN %s\r\n' % (key))
+        return self.get_response()
+    
+    def hkeys(self, key):
+        """
+        Return all keys in a hash.
+        """
+        self._write('HKEYS %s\r\n' % (key))
+        return self.get_response()
+    
+    def hvals(self, key):
+        """
+        Return all values in a hash.
+        """
+        self._write('HVALS %s\r\n' % (key))
+        return self.get_response()
+    
+    def hgetall(self, key):
+        """
+        Return all pairs of key/values in a hash.
+        """
+        self._write('HGETALL %s\r\n' % (key))
+        return self.get_response()
+
+    def hexists(self, key, hkey):
+        """
+        Test for existence of a specified field in a hash
+        """
+        self._write('HEXISTS %s %s\r\n%s\r\n' % (key, len(hkey), hkey))
+        return self.get_response()
+    
+    def hmget(self, key, arg_list):
+        """
+        Retrieve the values associated to the specified fields.
+        """
+        num_cmd = len(arg_list) + 2
+        cmd = "*%s\r\n" % num_cmd
+        cmd = cmd + "$5\r\nHMGET\r\n"
+        cmd = cmd + "$%s\r\n%s\r\n" % (len(key), key)
+        for m in arg_list:
+            cmd = cmd + "$%s\r\n%s\r\n" % (len(m), m)
+
+        self._write(cmd+"\r\n")
+        return self.get_response()
+
+    def hmset(self, key, kv_dict):
+        """
+        Set the respective fields to the respective values. HMSET replaces old values with new values.
+        """
+        num_cmd = (len(kv_dict) * 2) + 2
+        cmd = "*%s\r\n" % num_cmd
+        cmd = cmd + "$5\r\nHMSET\r\n"
+        cmd = cmd + "$%s\r\n%s\r\n" % (len(key), key)
+        
+        listo = []
+        [listo.extend(p) for p in kv_dict.iteritems()]
+        for m in listo:
+            cmd = cmd + "$%s\r\n%s\r\n" % (len(m), m)
+        self._write(cmd)
+        return self.get_response()
+    
+    # PUB/SUB protocol
+
+    def publish(self, channel, body):
+        """
+        Publish body to a channel 
+        """
+        self._write('*3\r\n$7\r\nPUBLISH\r\n$%s\r\n%s\r\n$%si\r\n%s\r\n' % (len(channel), channel, len(body), body))
+        return self.get_response()
 
