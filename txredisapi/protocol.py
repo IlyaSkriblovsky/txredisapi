@@ -41,8 +41,6 @@ Redis google code project: http://code.google.com/p/redis/
 """
 
 
-import decimal
-
 from twisted.internet import defer
 from twisted.protocols import basic
 from twisted.protocols import policies
@@ -178,8 +176,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             element = data
         else:
             try:
-                element = int(data) if data.find('.') == -1 else decimal.Decimal(data)
-            except (ValueError, decimal.InvalidOperation):
+                element = int(data) if data.find('.') == -1 else float(data)
+            except (ValueError):
                 element = data.decode(self.charset)
 
         if self.multi_bulk_length > 0:
