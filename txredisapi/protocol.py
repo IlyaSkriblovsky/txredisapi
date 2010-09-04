@@ -817,12 +817,15 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
 
 class SubscriberProtocol(RedisProtocol):
-    def messageReceived(self, channel, message):
+    def messageReceived(self, pattern, channel, message):
         pass
 
     def replyReceived(self, reply):
         if type(reply) is types.ListType:
-            self.messageReceived(*reply[-2:])
+            if reply[-3] == u"message":
+                self.messageReceived(None, *reply[-2:])
+            else:
+                self.messageReceived(*reply[-3:])
 
     def __pubsub(self, command, channels):
         if type(channels) is types.StringType:

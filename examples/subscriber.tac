@@ -42,8 +42,8 @@ class myProtocol(SubscriberProtocol):
         # self.continueTrying = False
         # self.transport.loseConnection()
 
-    def messageReceived(self, channel, message):
-        print "channel=%s message=%s" % (channel, message)
+    def messageReceived(self, pattern, channel, message):
+        print "pattern=%s, channel=%s message=%s" % (pattern, channel, message)
 
     def connectionLost(self, reason):
         print "lost connection:", reason
