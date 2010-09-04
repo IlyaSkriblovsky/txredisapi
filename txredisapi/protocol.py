@@ -41,6 +41,7 @@ Redis google code project: http://code.google.com/p/redis/
 """
 
 
+import types
 from twisted.internet import defer
 from twisted.protocols import basic
 from twisted.protocols import policies
@@ -749,12 +750,18 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self._write('HVALS %s\r\n' % (key))
         return self.get_response()
     
+    @defer.inlineCallbacks
     def hgetall(self, key):
         """
         Return all pairs of key/values in a hash.
         """
         self._write('HGETALL %s\r\n' % (key))
-        return self.get_response()
+        result = {}
+        items = yield self.get_response()
+        for idx, k in enumerate(items):
+            if not idx%2:
+                result[k] = items[idx+1]
+        defer.returnValue(result)
 
     def hexists(self, key, hkey):
         """
@@ -789,6 +796,13 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         listo = []
         [listo.extend(p) for p in kv_dict.iteritems()]
         for m in listo:
+            mt = type(m)
+            if mt in (types.IntType, types.FloatType):
+                m = str(m)
+            elif mt is types.UnicodeType:
+                m = m.encode(self.charset)
+            elif mt is not types.StringType:
+                raise ValueError("cannot store object of type %s: %s" % (mt, repr(m)))
             cmd = cmd + "$%s\r\n%s\r\n" % (len(m), m)
         self._write(cmd)
         return self.get_response()
