@@ -21,6 +21,7 @@ import collections
 from twisted.internet import task, defer
 from txredisapi.hashring import HashRing
 import re
+
 _findhash = re.compile('.+\{(.*)\}.*', re.I)
 
 class RedisAPI(object):
@@ -39,7 +40,7 @@ class RedisAPI(object):
         except:
             return self.__disconnected
 
-    def __connection_lost(self, deferred):
+    def __wait_pool_cleanup(self, deferred):
         if self._factory.size == 0:
             self.__task.stop()
             deferred.callback(True)
@@ -53,7 +54,7 @@ class RedisAPI(object):
                 pass
 
         d = defer.Deferred()
-        self.__task = task.LoopingCall(self.__connection_lost, d)
+        self.__task = task.LoopingCall(self.__wait_pool_cleanup, d)
         self.__task.start(1)
         return d
 
@@ -90,7 +91,7 @@ class RedisShardingAPI(object):
             key = args[0]
             assert isinstance(key, types.StringTypes)
         except:
-            raise ValueError("method '%s' requires key as first argument" % method)
+            raise ValueError("method '%s' requires a key as the first argument" % method)
 
         g = _findhash.match(key)
 
@@ -98,6 +99,7 @@ class RedisShardingAPI(object):
             node = self.__ring(g.groups()[0])
         else:
             node = self.__ring(key)
+
         #print "node for '%s' is: %s" % (key, node)
         f = getattr(node, method)
         return f(*args, **kwargs)
@@ -117,7 +119,7 @@ class RedisShardingAPI(object):
             "zremrangebyscore", "zcard", "zscore", 
             "hget", "hset", "hdel", "hincrby", "hlen", 
             "hkeys", "hvals", "hgetall", "hexists", "hmget", "hmset", 
-            "publish"
+            "publish",
             ]:
             return functools.partial(self.__wrap, method)
         else:
@@ -125,6 +127,9 @@ class RedisShardingAPI(object):
 
     @defer.inlineCallbacks
     def mget(self, *args):
+        """
+        high-level mget, required because of the sharding support
+        """
         group = collections.defaultdict(lambda: [])
         for k in args:
             node = self.__ring(k)
