@@ -19,7 +19,7 @@ Features
 - Connection Pools
 - Automatic Sharding
 - Automatic Reconnection
-- `PublishSubscribe <http://code.google.com/p/redis/wiki/PublishSubscribe>`: see the `subscriber <http://github.com/fiorix/txredisapi/tree/master/examples/subscriber.py>` example.
+- PublishSubscribe
 
 Installation
 ============
