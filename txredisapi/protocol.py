@@ -827,6 +827,8 @@ class SubscriberProtocol(RedisProtocol):
     def __pubsub(self, command, channels):
         if type(channels) is types.StringType:
             channels = [channels]
+        elif type(channels) is types.UnicodeType:
+            channels = [channels.encode(self.charset, self.errors)]
 
         if type(channels) is not types.ListType:
             raise TypeError("channels must be either a string or a list of strings")
