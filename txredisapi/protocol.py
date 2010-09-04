@@ -64,10 +64,9 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     BULK = "$"
     MULTI_BULK = "*"
 
-    def __init__(self, db=None, charset='utf8', errors='strict'):
+    def __init__(self, charset='utf8', errors='strict'):
         self.charset = charset
         self.errors = errors
-        self.db = db
 
         self.bulk_length = 0
         self.multi_bulk_length = 0
@@ -816,3 +815,36 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self._write('*3\r\n$7\r\nPUBLISH\r\n$%s\r\n%s\r\n$%si\r\n%s\r\n' % (len(channel), channel, len(body), body))
         return self.get_response()
 
+
+class SubscriberProtocol(RedisProtocol):
+    def messageReceived(self, channel, message):
+        pass
+
+    def replyReceived(self, reply):
+        if type(reply) is types.ListType:
+            self.messageReceived(*reply[-2:])
+
+    def __pubsub(self, command, channels):
+        if type(channels) is types.StringType:
+            channels = [channels]
+
+        if type(channels) is not types.ListType:
+            raise TypeError("channels must be either a string or a list of strings")
+
+        for chan in channels:
+            if type(chan) is types.UnicodeType:
+                chan = chan.encode(self.charset)
+            self._write('*2\r\n$%s\r\n%s\r\n$%s\r\n%s\r\n' % \
+                (len(command), command, len(chan), chan))
+
+    def subscribe(self, channels):
+        self.__pubsub("SUBSCRIBE", channels)
+
+    def unsubscribe(self, channels):
+        self.__pubsub("UNSUBSCRIBE", channels)
+
+    def psubscribe(self, patterns):
+        self.__pubsub("PSUBSCRIBE", patterns)
+
+    def punsubscribe(self, patterns):
+        self.__pubsub("PUNSUBSCRIBE", patterns)

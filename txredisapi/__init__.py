@@ -15,11 +15,11 @@
 
 import types
 from txredisapi import api
-from txredisapi.protocol import RedisProtocol
+from txredisapi.protocol import RedisProtocol, SubscriberProtocol
 from twisted.internet import defer, reactor, protocol
 
 
-class _RedisFactory(protocol.ReconnectingClientFactory):
+class RedisFactory(protocol.ReconnectingClientFactory):
     maxDelay = 10
     protocol = RedisProtocol
 
@@ -53,8 +53,14 @@ class _RedisFactory(protocol.ReconnectingClientFactory):
         return conn
 
 
+class SubscriberFactory(protocol.ReconnectingClientFactory):
+    maxDelay = 120
+    continueTrying = True
+    protocol = SubscriberProtocol
+
+
 def _Connection(host, port, reconnect, pool_size, lazy):
-    factory = _RedisFactory(pool_size)
+    factory = RedisFactory(pool_size)
     factory.continueTrying = reconnect
     for x in xrange(pool_size):
         reactor.connectTCP(host, port, factory)
