@@ -141,9 +141,10 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         self.bulk_buffer += data
         if self.bulk_length == 0:
-            self.bulkDataReceived(self.bulk_buffer)
-            self.setLineMode(extra=rest)
+            buffer = self.bulk_buffer
             self.bulk_buffer = ""
+            self.bulkDataReceived(buffer)
+            self.setLineMode(extra=rest)
 
     def errorReceived(self, data):
         """
