@@ -69,6 +69,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.errors = errors
 
         self.bulk_length = 0
+        self.bulk_buffer = ""
         self.multi_bulk_length = 0
         self.multi_bulk_reply = []
         self.replyQueue = defer.DeferredQueue()
@@ -88,7 +89,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
           "-" error message
           "+" single line status reply
           ":" integer number (protocol level only?)
-
           "$" bulk data
           "*" multi-bulk data
         """
@@ -105,7 +105,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             self.integerReceived(data)
         elif token == self.BULK:
             try:
-                self.bulk_length = int(data)
+                self.bulk_length = long(data)
             except ValueError:
                 self.replyReceived(InvalidResponse("Cannot convert data '%s' to integer" % data))
                 return 
@@ -116,7 +116,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.setRawMode()
         elif token == self.MULTI_BULK:
             try:
-                self.multi_bulk_length = int(data)
+                self.multi_bulk_length = long(data)
             except (TypeError, ValueError):
                 self.replyReceived(InvalidResponse("Cannot convert multi-response header '%s' to integer" % data))
                 self.multi_bulk_length = 0
@@ -133,11 +133,17 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Process and dispatch to bulkDataReceived.
         """
-        reply_len = self.bulk_length 
-        bulk_data = data[:reply_len]
-        rest_data = data[reply_len + 2:]
-        self.bulkDataReceived(bulk_data)
-        self.setLineMode(extra=rest_data)
+        if self.bulk_length:
+            data, rest = data[:self.bulk_length], data[self.bulk_length:]
+            self.bulk_length -= len(data)
+        else:
+            rest = ""
+
+        self.bulk_buffer += data
+        if self.bulk_length == 0:
+            self.bulkDataReceived(self.bulk_buffer)
+            self.setLineMode(extra=rest)
+            self.bulk_buffer = ""
 
     def errorReceived(self, data):
         """
@@ -171,7 +177,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Receipt of a bulk data element.
         """
-        self.bulk_length = 0
         if data is None:
             element = data
         else:
@@ -182,7 +187,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         if self.multi_bulk_length > 0:
             self.handleMultiBulkElement(element)
-            return
         else:
             self.replyReceived(element)
 
