@@ -42,6 +42,7 @@ Redis google code project: http://code.google.com/p/redis/
 
 
 import types
+from twisted.python import log
 from twisted.internet import defer
 from twisted.protocols import basic
 from twisted.protocols import policies
@@ -74,7 +75,22 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.multi_bulk_reply = []
         self.replyQueue = defer.DeferredQueue()
         
+    @defer.inlineCallbacks
     def connectionMade(self):
+        if self.factory.db:
+            try:
+                r = yield self.select(self.factory.db)
+                if isinstance(r, ResponseError):
+                    raise r
+            except Exception, e:
+                self.factory.continueTrying = False
+                self.transport.loseConnection()
+                msg = "REDIS ERROR: Could not set DB=%s: %s" % (self.factory.db, e)
+                self.factory.error(msg)
+                if self.factory.isLazy:
+                    log.msg(msg)
+                defer.returnValue(None)
+
         self.connected = 1
         self.factory.append(self)
 
@@ -806,7 +822,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             elif mt is types.UnicodeType:
                 m = m.encode(self.charset)
             elif mt is not types.StringType:
-                raise ValueError("cannot store object of type %s: %s" % (mt, repr(m)))
+                raise ValueError("Cannot store object of type %s: %s" % (mt, repr(m)))
             cmd = cmd + "$%s\r\n%s\r\n" % (len(m), m)
         self._write(cmd)
         return self.get_response()

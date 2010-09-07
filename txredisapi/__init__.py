@@ -23,10 +23,15 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     maxDelay = 10
     protocol = RedisProtocol
 
-    def __init__(self, pool_size):
+    def __init__(self, pool_size, db=0, isLazy=False):
+        if not isinstance(db, types.IntType):
+            raise ValueError("REDIS DB should be an integer: %s / %s" % (type(db), repr(db)))
+
+        self.db = db
         self.idx = 0
         self.size = 0
         self.pool = []
+        self.isLazy = isLazy
         self.pool_size = pool_size
         self.deferred = defer.Deferred()
         self.API = api.RedisAPI(self)
@@ -36,6 +41,11 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.size += 1
         if self.deferred and self.size == self.pool_size:
             self.deferred.callback(self.API)
+            self.deferred = None
+
+    def error(self, reason):
+        if self.deferred:
+            self.deferred.errback(ValueError(reason))
             self.deferred = None
 
     def remove(self, conn):
@@ -59,14 +69,14 @@ class SubscriberFactory(protocol.ReconnectingClientFactory):
     protocol = SubscriberProtocol
 
 
-def _Connection(host, port, reconnect, pool_size, lazy):
-    factory = RedisFactory(pool_size)
+def _Connection(host, port, reconnect, pool_size, db, lazy):
+    factory = RedisFactory(pool_size, db, lazy)
     factory.continueTrying = reconnect
     for x in xrange(pool_size):
         reactor.connectTCP(host, port, factory)
     return (lazy is True) and factory.API or factory.deferred
 
-def _ShardingConnection(hosts, reconnect, pool_size, lazy):
+def _ShardingConnection(hosts, reconnect, pool_size, db, lazy):
     err = "please use a list or tuple with host:port"
     if not isinstance(hosts, (types.ListType, types.TupleType)):
         raise ValueError(err)
@@ -79,7 +89,7 @@ def _ShardingConnection(hosts, reconnect, pool_size, lazy):
         except:
             raise ValueError(err)
         else:
-            d = _Connection(host, port, reconnect, pool_size, lazy)
+            d = _Connection(host, port, reconnect, pool_size, db, lazy)
             connections.append(d)
 
     if lazy is True:
@@ -90,26 +100,26 @@ def _ShardingConnection(hosts, reconnect, pool_size, lazy):
         return deferred
 
 
-def RedisConnection(host="localhost", port=6379, reconnect=True):
-    return _Connection(host, port, reconnect, pool_size=1, lazy=False)
+def RedisConnection(host="localhost", port=6379, reconnect=True, db=0):
+    return _Connection(host, port, reconnect, pool_size=1, db=db, lazy=False)
 
-def lazyRedisConnection(host="localhost", port=6379, reconnect=True):
-    return _Connection(host, port, reconnect, pool_size=1, lazy=True)
+def lazyRedisConnection(host="localhost", port=6379, reconnect=True, db=0):
+    return _Connection(host, port, reconnect, pool_size=1, db=db, lazy=True)
 
-def RedisConnectionPool(host="localhost", port=6379, reconnect=True, pool_size=5):
-    return _Connection(host, port, reconnect, pool_size, lazy=False)
+def RedisConnectionPool(host="localhost", port=6379, reconnect=True, pool_size=5, db=0):
+    return _Connection(host, port, reconnect, pool_size, db=db, lazy=False)
 
-def lazyRedisConnectionPool(host="localhost", port=6379, reconnect=True, pool_size=5):
-    return _Connection(host, port, reconnect, pool_size, lazy=True)
+def lazyRedisConnectionPool(host="localhost", port=6379, reconnect=True, pool_size=5, db=0):
+    return _Connection(host, port, reconnect, pool_size, db=db, lazy=True)
 
-def RedisShardingConnection(hosts, reconnect=True):
-    return _ShardingConnection(hosts, reconnect, pool_size=1, lazy=False)
+def RedisShardingConnection(hosts, reconnect=True, db=0):
+    return _ShardingConnection(hosts, reconnect, pool_size=1, db=db, lazy=False)
 
-def RedisShardingConnectionPool(hosts, reconnect=True, pool_size=5):
-    return _ShardingConnection(hosts, reconnect, pool_size, lazy=False)
+def RedisShardingConnectionPool(hosts, reconnect=True, pool_size=5, db=0):
+    return _ShardingConnection(hosts, reconnect, pool_size, db=db, lazy=False)
 
-def lazyRedisShardingConnection(hosts, reconnect=True):
-    return _ShardingConnection(hosts, reconnect, pool_size=1, lazy=True)
+def lazyRedisShardingConnection(hosts, reconnect=True, db=0):
+    return _ShardingConnection(hosts, reconnect, pool_size=1, db=db, lazy=True)
 
-def lazyRedisShardingConnectionPool(hosts, reconnect=True, pool_size=5):
-    return _ShardingConnection(hosts, reconnect, pool_size, lazy=True)
+def lazyRedisShardingConnectionPool(hosts, reconnect=True, pool_size=5, db=0):
+    return _ShardingConnection(hosts, reconnect, pool_size, db=db, lazy=True)
