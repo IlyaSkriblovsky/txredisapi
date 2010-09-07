@@ -25,9 +25,9 @@ class TestRedisHashOperations(unittest.TestCase):
     def testRedisHSetHGet(self):
         rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
         
-        for value in ("foo", "bar"):
-            c = yield rapi.hset("test", value, 1)
-            result = yield rapi.hget("test", value)
+        for hk in ("foo", "bar"):
+            yield rapi.hset("txredisapi:HSetHGet", hk, 1)
+            result = yield rapi.hget("txredisapi:HSetHGet", hk)
             self.assertEqual(result, 1)
 
         yield rapi.disconnect()
@@ -38,12 +38,12 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
-        s = yield rapi.hmset("testmh", t_dict)
+        s = yield rapi.hmset("txredisapi:HMSetHMGet", t_dict)
         ks = t_dict.keys()
         ks.reverse()
         vs = t_dict.values()
         vs.reverse()
-        res = yield rapi.hmget("testmh", ks)
+        res = yield rapi.hmget("txredisapi:HMSetHMGet", ks)
         self.assertEqual(vs, res)
 
         yield rapi.disconnect()
@@ -54,12 +54,12 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
-        s = yield rapi.hmset("testkv", t_dict)
+        s = yield rapi.hmset("txredisapi:HKeysHVals", t_dict)
 
         vs_u = [unicode(v) for v in t_dict.values()]
         ks_u = [unicode(k) for k in t_dict.keys()]
-        k_res = yield rapi.hkeys("testkv")
-        v_res = yield rapi.hvals("testkv")
+        k_res = yield rapi.hkeys("txredisapi:HKeysHVals")
+        v_res = yield rapi.hvals("txredisapi:HKeysHVals")
         self.assertEqual(ks_u, k_res)
         self.assertEqual(vs_u, v_res)
 
@@ -68,13 +68,13 @@ class TestRedisHashOperations(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisHIncrBy(self):
         rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
-        c = yield rapi.hset("test_incr", "value", 1)
-        c = yield rapi.hincrby("test_incr", "value")
-        result = yield rapi.hget("test_incr", "value")
+        c = yield rapi.hset("txredisapi:HIncrBy", "value", 1)
+        c = yield rapi.hincrby("txredisapi:HIncrBy", "value")
+        result = yield rapi.hget("txredisapi:HIncrBy", "value")
         self.assertEqual(result, 2)
         
-        c = yield rapi.hincrby("test_incr", "value", 10)
-        result = yield rapi.hget("test_incr", "value")
+        c = yield rapi.hincrby("txredisapi:HIncrBy", "value", 10)
+        result = yield rapi.hget("txredisapi:HIncrBy", "value")
         self.assertEqual(result, 12)
         
         yield rapi.disconnect()
@@ -86,15 +86,15 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
         
-        s = yield rapi.hmset("testld", t_dict)
-        r_len = yield rapi.hlen("testld")
+        s = yield rapi.hmset("txredisapi:HDelHExists", t_dict)
+        r_len = yield rapi.hlen("txredisapi:HDelHExists")
         self.assertEqual(r_len, 2)
         
-        s = yield rapi.hdel("testld", "key2")
-        r_len = yield rapi.hlen("testld")
+        s = yield rapi.hdel("txredisapi:HDelHExists", "key2")
+        r_len = yield rapi.hlen("txredisapi:HDelHExists")
         self.assertEqual(r_len, 1)
         
-        s = yield rapi.hexists("testld", "key2")
+        s = yield rapi.hexists("txredisapi:HDelHExists", "key2")
         self.assertEqual(s, 0)
         
         yield rapi.disconnect()
@@ -102,16 +102,11 @@ class TestRedisHashOperations(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisHGetAll(self):
         rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
-        t_dict = {}
-        t_dict['key1'] = 'uno'
-        t_dict['key2'] = 'dos'
-        
-        s = yield rapi.hmset("testga", t_dict)
-        s = yield rapi.hgetall("testga")
 
-        all_u = []
-        [all_u.extend(p) for p in t_dict.iteritems()]
-        self.assertEqual(s, all_u)
+        d = {u"key1":u"uno", u"key2":u"dos"}
+        yield rapi.hmset("txredisapi:HGetAll", d)
+
+        s = yield rapi.hgetall("txredisapi:HGetAll")
+
+        self.assertEqual(d, s)
         yield rapi.disconnect() 
-        
-        

@@ -32,6 +32,16 @@ class TestRedisConnectionMethods(unittest.TestCase):
         self.assertEqual(isinstance(rapi, api.RedisAPI), True)
         disconnected = yield rapi.disconnect()
         self.assertEqual(disconnected, True)
+
+    @defer.inlineCallbacks
+    def test_RedisConnectionDB1(self):
+        # RedisConnection returns deferred, which gets RedisAPI
+        conn = txredisapi.RedisConnection(redis_host, redis_port, db=1)
+        self.assertEqual(isinstance(conn, defer.Deferred), True)
+        rapi = yield conn
+        self.assertEqual(isinstance(rapi, api.RedisAPI), True)
+        disconnected = yield rapi.disconnect()
+        self.assertEqual(disconnected, True)
         
     @defer.inlineCallbacks
     def test_RedisConnectionPool(self):
