@@ -36,8 +36,8 @@ class myProtocol(SubscriberProtocol):
         print "$ redis-cli publish foo.bar hello world"
         self.subscribe("zz")
         self.psubscribe("foo.*")
-        reactor.callLater(10, self.unsubscribe, "zz")
-        reactor.callLater(15, self.punsubscribe, "foo.*")
+        #reactor.callLater(10, self.unsubscribe, "zz")
+        #reactor.callLater(15, self.punsubscribe, "foo.*")
 
         # self.continueTrying = False
         # self.transport.loseConnection()
@@ -59,8 +59,3 @@ class myFactory(SubscriberFactory):
 application = service.Application("subscriber")
 srv = internet.TCPClient("127.0.0.1", 6379, myFactory())
 srv.setServiceParent(application)
-
-# if __name__ == "__main__":
-#   log.startLogging(sys.stdout)
-#   reactor.connectTCP("127.0.0.1", 6379, myFactory())
-#   reactor.run()

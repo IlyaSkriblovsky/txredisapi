@@ -68,14 +68,16 @@ class TestRedisHashOperations(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisHIncrBy(self):
         rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
-        c = yield rapi.hset("txredisapi:HIncrBy", "value", 1)
-        c = yield rapi.hincrby("txredisapi:HIncrBy", "value")
+        yield rapi.hset("txredisapi:HIncrBy", "value", 1)
+        yield rapi.hincr("txredisapi:HIncrBy", "value")
+        yield rapi.hincrby("txredisapi:HIncrBy", "value", 2) 
         result = yield rapi.hget("txredisapi:HIncrBy", "value")
-        self.assertEqual(result, 2)
+        self.assertEqual(result, 4)
         
-        c = yield rapi.hincrby("txredisapi:HIncrBy", "value", 10)
+        yield rapi.hincrby("txredisapi:HIncrBy", "value", 10)
+        yield rapi.hdecr("txredisapi:HIncrBy", "value")
         result = yield rapi.hget("txredisapi:HIncrBy", "value")
-        self.assertEqual(result, 12)
+        self.assertEqual(result, 13)
         
         yield rapi.disconnect()
 
@@ -105,7 +107,6 @@ class TestRedisHashOperations(unittest.TestCase):
 
         d = {u"key1":u"uno", u"key2":u"dos"}
         yield rapi.hmset("txredisapi:HGetAll", d)
-
         s = yield rapi.hgetall("txredisapi:HGetAll")
 
         self.assertEqual(d, s)

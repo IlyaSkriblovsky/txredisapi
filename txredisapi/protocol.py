@@ -42,6 +42,9 @@ Redis google code project: http://code.google.com/p/redis/
 
 
 import types
+import warnings
+from itertools import imap
+
 from twisted.python import log
 from twisted.internet import defer
 from twisted.protocols import basic
@@ -54,6 +57,23 @@ class ResponseError(RedisError): pass
 class InvalidResponse(RedisError): pass
 class InvalidData(RedisError): pass
 
+def list_or_args(command, keys, args):
+    oldapi = bool(args)
+    try:
+        i = iter(keys)
+        if isinstance(keys, types.StringTypes):
+            raise TypeError
+    except TypeError:
+        oldapi = True
+        keys = [keys]
+
+    if oldapi:
+        warnings.warn(DeprecationWarning(
+            "Passing *args to redis.%s is deprecated. "
+            "Pass an iterable to ``keys`` instead" % command))
+        keys.extend(args)
+    return keys
+
 
 class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     """The main Redis client.
@@ -65,7 +85,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     BULK = "$"
     MULTI_BULK = "*"
 
-    def __init__(self, charset='utf8', errors='strict'):
+    def __init__(self, charset="utf-8", errors="strict"):
         self.charset = charset
         self.errors = errors
 
@@ -143,7 +163,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 return
             elif self.multi_bulk_length == 0:
                 self.multiBulkDataReceived()
- 
 
     def rawDataReceived(self, data):
         """
@@ -166,14 +185,14 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Error from server.
         """
-        reply = ResponseError(data[4:] if data[:4] == 'ERR ' else data)
+        reply = ResponseError(data[4:] if data[:4] == "ERR " else data)
         self.replyReceived(reply)
 
     def statusReceived(self, data):
         """
         Single line status should always be a string.
         """
-        if data == 'none':
+        if data == "none":
             reply = None # should this happen here in the client?
         else:
             reply = data 
@@ -188,7 +207,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         except ValueError:
             reply = InvalidResponse("Cannot convert data '%s' to integer" % data)
         self.replyReceived(reply)
-
 
     def bulkDataReceived(self, data):
         """
@@ -213,7 +231,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         if self.multi_bulk_length == 0:
             self.multiBulkDataReceived()
 
-
     def multiBulkDataReceived(self):
         """
         Receipt of list or set of bulk data elements.
@@ -222,7 +239,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.multi_bulk_reply = []
         self.multi_bulk_length = 0
         self.replyReceived(reply)
-        
 
     def replyReceived(self, reply):
         """
@@ -237,604 +253,736 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self.replyQueue.get()
 
-    def _encode(self, s):
-        if isinstance(s, str):
+    def encode(self, s):
+        if isinstance(s, types.StringType):
             return s
-        if isinstance(s, unicode):
+        if isinstance(s, types.UnicodeType):
             try:
                 return s.encode(self.charset, self.errors)
             except UnicodeEncodeError, e:
-                raise InvalidData("Error encoding unicode value '%s': %s" % (s.encode(self.charset, 'replace'), e))
+                raise InvalidData("Error encoding unicode value '%s': %s" % (repr(s), e))
         return str(s)
-    
-    def _write(self, s):
-        """
-        """
-        self.transport.write(s)
-            
-    def ping(self):
-        """
-        Test command. Expect PONG as a reply.
-        """
-        self._write('PING\r\n')
+
+    def execute_command(self, *args):
+        cmds = ["$%s\r\n%s\r\n" % (len(enc_value), enc_value)
+            for enc_value in imap(self.encode, args)]
+        self.transport.write("*%s\r\n%s" % (len(cmds), "".join(cmds)))
         return self.get_response()
     
+
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # REDIS COMMANDS
     # 
 
-    # Commands operating on string values
-    def set(self, name, value, preserve=False, getset=False):
+    # Connection handling
+    def quit(self):
         """
+        close the connection
         """
-        # the following will raise an error for unicode values that can't be encoded to ascii
-        # we could probably add an 'encoding' arg to init, but then what do we do with get()?
-        # convert back to unicode? and what about ints, or pickled values?
-        if getset: command = 'GETSET'
-        elif preserve: command = 'SETNX'
-        else: command = 'SET'
-        value = self._encode(value)
-        self._write('%s %s %s\r\n%s\r\n' % (
-                command, name, len(value), value
-            ))
-        return self.get_response()
-    
-    def get(self, name):
-        """
-        """
-        self._write('GET %s\r\n' % name)
-        return self.get_response()
-    
-    def getset(self, name, value):
-        """
-        """
-        return self.set(name, value, getset=True)
-        
-    def mget(self, *args):
-        """
-        """
-        self._write('MGET %s\r\n' % ' '.join(args))
-        return self.get_response()
-    
-    def incr(self, name, amount=1):
-        """
-        """
-        if amount == 1:
-            self._write('INCR %s\r\n' % name)
-        else:
-            self._write('INCRBY %s %s\r\n' % (name, amount))
-        return self.get_response()
+        self.factory.continueTrying = False
+        return self.execute_command("QUIT")
 
-    def decr(self, name, amount=1):
+    def auth(self, password):
         """
+        simple password authentication if enabled
         """
-        if amount == 1:
-            self._write('DECR %s\r\n' % name)
-        else:
-            self._write('DECRBY %s %s\r\n' % (name, amount))
-        return self.get_response()
-    
-    def exists(self, name):
-        """
-        """
-        self._write('EXISTS %s\r\n' % name)
-        return self.get_response()
+        return self.execute_command("AUTH", password)
 
-    def delete(self, name):
+    def ping(self):
         """
+        ping the server
         """
-        self._write('DEL %s\r\n' % name)
-        return self.get_response()
+        return self.execute_command("PING")
 
-    def get_type(self, name):
+    # Commands operating on all value types
+    def exists(self, key):
         """
+        test if a key exists
         """
-        self._write('TYPE %s\r\n' % name)
-        res = self.get_response()
-        # return None if res == 'none' else res
-        return res
-    
-    # Commands operating on the key space
-    @defer.inlineCallbacks
-    def keys(self, pattern):
+        return self.execute_command("EXISTS", key)
+
+    def delete(self, *keys):
         """
+        delete one or more keys
         """
-        self._write('KEYS %s\r\n' % pattern)
-        # return self.get_response().split()
-        r = yield self.get_response()
-        if r is not None:
-            res = r.split()
-            res.sort()# XXX is sort ok?
-        else:
-            res = []
-        defer.returnValue(res)
-    
+        return self.execute_command("DEL", *keys)
+
+    def type(self, key):
+        """
+        return the type of the value stored at key
+        """
+        return self.execute_command("TYPE", key)
+
+    def keys(self, pattern="*"):
+        """
+        return all the keys matching a given pattern
+        """
+        return self.execute_command("KEYS", pattern)
+
     def randomkey(self):
         """
+        return a random key from the key space
         """
-        #raise NotImplementedError("Implemented but buggy, do not use.")
-        self._write('RANDOMKEY\r\n')
-        return self.get_response()
-    
-    def rename(self, src, dst, preserve=False):
+        return self.execute_command("RANDOMKEY")
+
+    def rename(self, oldkey, newkey):
         """
+        rename the old key in the new one, destroying the newname key if it already exists
         """
-        if preserve:
-            self._write('RENAMENX %s %s\r\n' % (src, dst))
-            return self.get_response()
-        else:
-            self._write('RENAME %s %s\r\n' % (src, dst))
-            return self.get_response() #.strip()
-        
+        return self.execute_command("RENAME", oldkey, newkey)
+
+    def renamenx(self, oldkey, newkey):
+        """
+        rename the oldname key to newname, if the newname key does not already exist
+        """
+        return self.execute_command("RENAMENX", oldkey, newkey)
+
     def dbsize(self):
         """
+        return the number of keys in the current db
         """
-        self._write('DBSIZE\r\n')
-        return self.get_response()
-    
-    def expire(self, name, time):
-        """
-        """
-        self._write('EXPIRE %s %s\r\n' % (name, time))
-        return self.get_response()
-    
-    def ttl(self, name):
-        """
-        """
-        self._write('TTL %s\r\n' % name)
-        return self.get_response()
-    
-    # Commands operating on lists
-    def push(self, name, value, tail=False):
-        """
-        """
-        value = self._encode(value)
-        self._write('%s %s %s\r\n%s\r\n' % (
-            'LPUSH' if tail else 'RPUSH', name, len(value), value
-        ))
-        return self.get_response()
-    
-    def llen(self, name):
-        """
-        """
-        self._write('LLEN %s\r\n' % name)
-        return self.get_response()
+        return self.execute_command("DBSIZE")
 
-    def lrange(self, name, start, end):
+    def expire(self, key, time):
         """
+        set a time to live in seconds on a key
         """
-        self._write('LRANGE %s %s %s\r\n' % (name, start, end))
-        return self.get_response()
+        return self.execute_command("EXPIRE", name, time)
+
+    def persist(self, key):
+        """
+        remove the expire from a key
+        """
+        return self.execute_command("PERSIST", key)
+
+    def ttl(self, key):
+        """
+        get the time to live in seconds of a key
+        """
+        return self.execute_command("TTL", key)
+
+    def select(self, index):
+        """
+        Select the DB with the specified index
+        """
+        return self.execute_command("SELECT", index)
+
+    def move(self, key, dbindex):
+        """
+        Move the key from the currently selected DB to the dbindex DB
+        """
+        return self.execute_command("MOVE", key, dbindex)
+
+    def flush(self, all_dbs=False):
+        warnings.warn(DeprecationWarning(
+            "redis.flush() has been deprecated, "
+            "use redis.flush() or redis.flushall() instead"))
+        return all_dbs and self.flushall() or self.flushdb()
+
+    def flushdb(self):
+        """
+        Remove all the keys from the currently selected DB
+        """
+        return self.execute_command("FLUSHDB")
+
+    def flushall(self):
+        """
+        Remove all the keys from all the databases
+        """
+        return self.execute_command("FLUSHALL")
+
+    # Commands operating on string values
+    def set(self, key, value, preserve=False, getset=False):
+        """
+        Set a key to a string value
+        """
+        if preserve:
+            warnings.warn(DeprecationWarning(
+                "preserve option to 'set' is deprecated, "
+                "use redis.setnx() instead"))
+            return self.setnx(key, value)
+
+        if getset:
+            warnings.warn(DeprecationWarning(
+                "getset option to 'set' is deprecated, "
+                "use redis.getset() instead"))
+            return self.getset(key, value)
+
+        return self.execute_command("SET", key, value)
+    
+    def get(self, key):
+        """
+        Return the string value of the key
+        """
+        return self.execute_command("GET", key)
+    
+    def getset(self, key, value):
+        """
+        Set a key to a string returning the old value of the key
+        """
+        return self.execute_command("GETSET", key, value)
         
-    def ltrim(self, name, start, end):
+    def mget(self, keys, *args):
         """
+        Multi-get, return the strings values of the keys
         """
-        self._write('LTRIM %s %s %s\r\n' % (name, start, end))
-        return self.get_response()
+        keys = list_or_args("mget", keys, args)
+        return self.execute_command("MGET", *keys)
     
-    def lindex(self, name, index):
+    def setnx(self, key, value):
         """
+        Set a key to a string value if the key does not exist
         """
-        self._write('LINDEX %s %s\r\n' % (name, index))
-        return self.get_response()
+        return self.execute_command("SETNX", name, value)
+
+    def setex(self, key, time, value):
+        """
+        Set+Expire combo command
+        """
+        return self.execute_command("SETEX", name, time, value)
+
+    def mset(self, mapping):
+        """
+        Set the respective fields to the respective values. HMSET replaces old values with new values.
+        """
+        items = []
+        for pair in mapping.iteritems():
+            items.extend(pair)
+        return self.execute_command("MSET", *items)
+
+    def msetnx(self, mapping):
+        """
+        Set multiple keys to multiple values in a single atomic operation if none of the keys already exist
+        """
+        items = []
+        for pair in mapping.iteritems():
+            items.extend(pair)
+        return self.execute_command("MSETNX", *items)
+
+    def incr(self, key, amount=1):
+        """
+        Increment the integer value of key
+        """
+        return self.execute_command("INCRBY", key, amount)
+
+    def incrby(self, key, amount):
+        """
+        Increment the integer value of key by integer
+        """
+        return self.incr(key, amount)
+
+    def decr(self, key, amount=1):
+        """
+        Decrement the integer value of key
+        """
+        return self.execute_command("DECRBY", key, amount)
+
+    def decrby(self, key, amount):
+        """
+        Decrement the integer value of key by integer
+        """
+        return self.decr(key, amount)
+
+    def append(self, key, value):
+        """
+        Append the specified string to the string stored at key
+        """
+        return self.execute_command("APPEND", key, value)
+
+    def substr(self, key, start, end=-1):
+        """
+        Return a substring of a larger string
+        """
+        return self.execute_command("SUBSTR", key, start, end)
+
+    # Commands operating on lists
+    def push(self, key, value, tail=False):
+        warnings.warn(DeprecationWarning(
+            "redis.push() has been deprecated, "
+            "use redis.lpush() or redis.rpush() instead"))
+
+        return tail and self.rpush(key, value) or self.lpush(key, value)
+
+    def rpush(self, key, value):
+        """
+        Append an element to the tail of the List value at key
+        """
+        return self.execute_command("RPUSH", key, value)
+
+    def lpush(self, key, value):
+        """
+        Append an element to the head of the List value at key
+        """
+        return self.execute_command("LPUSH", key, value)
+    
+    def llen(self, key):
+        """
+        Return the length of the List value at key
+        """
+        return self.execute_command("LLEN", key)
+
+    def lrange(self, key, start, end):
+        """
+        Return a range of elements from the List at key
+        """
+        return self.execute_command("LRANGE", key, start, end)
         
-    def pop(self, name, tail=False):
+    def ltrim(self, key, start, end):
         """
+        Trim the list at key to the specified range of elements
         """
-        self._write('%s %s\r\n' % ('RPOP' if tail else 'LPOP', name))
-        return self.get_response()
+        return self.execute_command("LTRIM", key, start, end)
     
-    def lset(self, name, index, value):
+    def lindex(self, key, index):
         """
+        Return the element at index position from the List at key
         """
-        value = self._encode(value)
-        self._write('LSET %s %s %s\r\n%s\r\n' % (
-            name, index, len(value), value
-        ))
-        return self.get_response()
+        return self.execute_command("LINDEX", key, index)
+
+    def lset(self, key, index, value):
+        """
+        Set a new value as the element at index position of the List at key
+        """
+        return self.execute_command("LSET", key, index, value)
+
+    def lrem(self, key, count, value):
+        """
+        Remove the first-N, last-N, or all the elements matching value from the List at key
+        """
+        return self.execute_command("LREM", key, count, value)
+        
+    def pop(self, key, tail=False):
+        warnings.warn(DeprecationWarning(
+            "redis.pop() has been deprecated, "
+            "user redis.lpop() or redis.rpop() instead"))
+
+        return tail and self.rpop(key) or self.lpop(key)
+
+    def lpop(self, key):
+        """
+        Return and remove (atomically) the first element of the List at key
+        """
+        return self.execute_command("LPOP", key)
+
+    def rpop(self, key):
+        """
+        Return and remove (atomically) the last element of the List at key
+        """
+        return self.execute_command("RPOP", key)
+
+    def blpop(self, keys, timeout=0):
+        """
+        Blocking LPOP
+        """
+        if isinstance(keys, types.StringTypes):
+            keys = [keys]
+        else:
+            keys = list(keys)
+
+        keys.append(timeout)
+        return self.execute_command("BLPOP", *keys)
+
+    def brpop(self, keys, timeout=0):
+        """
+        Blocking RPOP
+        """
+        if isinstance(keys, types.StringTypes):
+            keys = [keys]
+        else:
+            keys = list(keys)
+
+        keys.append(timeout)
+        return self.execute_command("BRPOP", *keys)
     
-    def lrem(self, name, value, num=0):
+    def rpoplpush(self, srckey, dstkey):
         """
+        Return and remove (atomically) the last element of the source 
+        List  stored at srckey and push the same element to the 
+        destination List stored at dstkey
         """
-        value = self._encode(value)
-        self._write('LREM %s %s %s\r\n%s\r\n' % (
-            name, num, len(value), value
-        ))
-        return self.get_response()
+        return self.execute_command("RPOPLPUSH", srckey, dstkey)
     
     # Commands operating on sets
-    def sadd(self, name, value):
+    def sadd(self, key, member):
         """
+        Add the specified member to the Set value at key
         """
-        value = self._encode(value)
-        self._write('SADD %s %s\r\n%s\r\n' % (
-            name, len(value), value
-        ))
-        return self.get_response()
+        return self.execute_command("SADD", key, member)
         
-    def srem(self, name, value):
+    def srem(self, key, member):
         """
+        Remove the specified member from the Set value at key
         """
-        value = self._encode(value)
-        self._write('SREM %s %s\r\n%s\r\n' % (
-            name, len(value), value
-        ))
-        return self.get_response()
-    
-    def sismember(self, name, value):
-        """
-        """
-        value = self._encode(value)
-        self._write('SISMEMBER %s %s\r\n%s\r\n' % (
-            name, len(value), value
-        ))
-        return self.get_response()
-    
-    @defer.inlineCallbacks
-    def sinter(self, *args):
-        """
-        """
-        self._write('SINTER %s\r\n' % ' '.join(args))
-        res = yield self.get_response()
-        if type(res) is list:
-            res = set(res)
-        defer.returnValue(res)
-    
-    def sinterstore(self, dest, *args):
-        """
-        """
-        self._write('SINTERSTORE %s %s\r\n' % (dest, ' '.join(args)))
-        return self.get_response()
+        return self.execute_command("SREM", key, member)
 
-    @defer.inlineCallbacks
-    def smembers(self, name):
+    def spop(self, key):
         """
+        Remove and return (pop) a random element from the Set value at key
         """
-        self._write('SMEMBERS %s\r\n' % name)
-        res = yield self.get_response()
-        if type(res) is list:
-            res = set(res)
-        defer.returnValue(res)
+        return self.execute_command("SPOP", key)
 
-    @defer.inlineCallbacks
-    def sunion(self, *args):
+    def smove(self, srckey, dstkey, member):
         """
+        Move the specified member from one Set to another atomically
         """
-        self._write('SUNION %s\r\n' % ' '.join(args))
-        res = yield self.get_response()
-        if type(res) is list:
-            res = set(res)
-        defer.returnValue(res)
+        return self.execute_command("SMOVE", srckey, dstkey, member)
 
-    def sunionstore(self, dest, *args):
+    def scard(self, key):
         """
+        Return the number of elements (the cardinality) of the Set at key
         """
-        self._write('SUNIONSTORE %s %s\r\n' % (dest, ' '.join(args)))
-        return self.get_response()
+        return self.execute_command("SCARD", key)
+    
+    def sismember(self, key, value):
+        """
+        Test if the specified value is a member of the Set at key
+        """
+        return self.execute_command("SISMEMBER", key, value)
+    
+    def sinter(self, keys, *args):
+        """
+        Return the intersection between the Sets stored at key1, key2, ..., keyN
+        """
+        keys = list_or_args("sinter", keys, args)
+        return self.execute_command("SINTER", *keys)
+    
+    def sinterstore(self, dstkey, keys, *args):
+        """
+        Compute the intersection between the Sets stored 
+        at key1, key2, ..., keyN, and store the resulting Set at dstkey
+        """
+        keys = list_or_args("sinterstore", keys, args)
+        return self.execute_command("SINTERSTORE", dstkey, *keys)
 
-    # Multiple databases handling commands
-    def select(self, db):
+    def sunion(self, keys, *args):
         """
+        Return the union between the Sets stored at key1, key2, ..., keyN
         """
-        self._write('SELECT %s\r\n' % db)
-        return self.get_response()
-    
-    def move(self, name, db):
+        keys = list_or_args("sunion", keys, args)
+        return self.execute_command("SUNION", *keys)
+
+    def sunionstore(self, dstkey, keys, *args):
         """
+        Compute the union between the Sets stored 
+        at key1, key2, ..., keyN, and store the resulting Set at dstkey
         """
-        self._write('MOVE %s %s\r\n' % (name, db))
-        return self.get_response()
-    
-    def flush(self, all_dbs=False):
+        keys = list_or_args("sunionstore", keys, args)
+        return self.execute_command("SUNIONSTORE", dstkey, *keys)
+
+    def sdiff(self, keys, *args):
         """
+        Return the difference between the Set stored at key1 and all the Sets key2, ..., keyN
         """
-        self._write('%s\r\n' % ('FLUSHALL' if all_dbs else 'FLUSHDB'))
-        return self.get_response()
-    
-    # Persistence control commands
-    def save(self, background=False):
+        keys = list_or_args("sdiff", keys, args)
+        return self.execute_command("SDIFF", *keys)
+
+    def sdiffstore(self, dstkey, keys, *args):
         """
+        Compute the difference between the Set key1 and all the 
+        Sets key2, ..., keyN, and store the resulting Set at dstkey
         """
-        if background:
-            self._write('BGSAVE\r\n')
-        else:
-            self._write('SAVE\r\n')
-        return self.get_response()
-        
-    def lastsave(self):
+        keys = list_or_args("sdiffstore", keys, args)
+        return self.execute_command("SDIFFSTORE", dstkey, *keys)
+
+    def smembers(self, key):
         """
+        Return all the members of the Set value at key
         """
-        self._write('LASTSAVE\r\n')
-        return self.get_response()
-    
-    @defer.inlineCallbacks
-    def info(self):
+        return self.execute_command("SMEMBERS", key)
+
+    def srandmember(self, key):
         """
+        Return a random member of the Set value at key
         """
-        self._write('INFO\r\n')
-        info = dict()
-        res = yield self.get_response()
-        res = res.split('\r\n')
-        for l in res:
-            if not l:
-                continue
-            k, v = l.split(':')
-            info[k] = int(v) if v.isdigit() else v
-        defer.returnValue(info)
-    
-    def sort(self, name, by=None, get=None, start=None, num=None, desc=False, alpha=False):
+        return self.execute_command("SRANDMEMBER", key)
+
+    # Commands operating on sorted zsets (sorted sets)
+    def zadd(self, key, score, member):
         """
+        Add the specified member to the Sorted Set value at key 
+        or update the score if it already exist
         """
-        stmt = ['SORT', name]
-        if by:
-            stmt.append("BY %s" % by)
-        if start and num:
-            stmt.append("LIMIT %s %s" % (start, num))
-        if get is None:
-            pass
-        elif isinstance(get, basestring):
-            stmt.append("GET %s" % get)
-        elif isinstance(get, list) or isinstance(get, tuple):
-            for g in get:
-                stmt.append("GET %s" % g)
-        else:
-            raise RedisError("Invalid parameter 'get' for Redis sort")
-        if desc:
-            stmt.append("DESC")
-        if alpha:
-            stmt.append("ALPHA")
-        self._write(' '.join(stmt + ["\r\n"]))
-        return self.get_response()
-    
-    def auth(self, passwd):
-        self._write('AUTH %s\r\n' % passwd)
-        return self.get_response()
-   
-   # commands operating on sorted sets
-    def zadd(self, name, score, member):
-        """
-        """
-        value = self._encode(member)
-        self._write('ZADD %s %s\r\n' % (
-            name, score, value
-        ))
-        return self.get_response()
+        return self.execute_command("ZADD", key, score, member)
         
     def zrem(self, key, member):
         """
+        Remove the specified member from the Sorted Set value at key
         """
-        value = self._encode(value)
-        self._write('ZREM %s %s\r\n' % (
-            key, member
-        ))
-        return self.get_response()
+        return self.execute_command("ZREM", key, member)
     
-    def zincr(self, key, member, incr=1):
-        """
-        """
-        value = self._encode(value)
-        self._write('ZINCRBY %s %s %s\r\n' % (
-            key, incr, member
-        ))
-        return self.get_response()
+    def zincr(self, key, member):
+        return self.zincrby(key, 1, member)
 
-    def zrange(self, key, start, end, withscores=False):
-        """
-        """
-        if withscores:
-            self._write('ZRANGE %s %s %s withscores\r\n' % (name, start, end))
-        else:
-            self._write('ZRANGE %s %s %s\r\n' % (name, start, end))
+    def zdecr(self, key, member):
+        return self.zincrby(key, -1, member)
 
-        return self.get_response()
+    def zincrby(self, key, increment, member):
+        """
+        If the member already exists increment its score by increment, 
+        otherwise add the member setting increment as score
+        """
+        return self.execute_command("ZINCRBY", key, increment, member)
+
+    def zrank(self, key, member):
+        """
+        Return the rank (or index) or member in the sorted set at key, 
+        with scores being ordered from low to high
+        """
+        return self.execute_command("ZRANK", key, member)
+
+    def zrevrank(self, key, member):
+        """
+        Return the rank (or index) or member in the sorted set at key, 
+        with scores being ordered from high to low
+        """
+        return self.execute_command("ZREVRANK", key, member)
+
+    def zrange(self, key, start, end):
+        """
+        Return a range of elements from the sorted set at key
+
+        """
+        return self.execute_command("ZRANGE", key, start, end)
    
-    def zrevrange(self, key, start, end, withscores=False):
+    def zrevrange(self, key, start, end):
         """
+        Return a range of elements from the sorted set at key, 
+        exactly like ZRANGE, but the sorted set is ordered in 
+        traversed in reverse order, from the greatest to the smallest score
         """
-        if withscores:
-            self._write('ZREVRANGE %s %s %s withscores\r\n' % (name, start, end))
-        else:
-            self._write('ZREVRANGE %s %s %s\r\n' % (name, start, end))
-
-        return self.get_response()
+        return self.execute_command("ZREVRANGE", key, start, end)
     
-    def zrangebyscore(self, key, min=0, max=2, withscores=False, limit=False, offset=0, count=1):
+    def zrangebyscore(self, key, min, max):
         """
-            ZRANGEBYSCORE key min max [LIMIT offset count] (Redis >= 1.1)
-
-            ZRANGEBYSCORE key min max [LIMIT offset count] [WITHSCORES] (Redis >= 1.3.4)
-
-            Time complexity: O(log(N))+O(M) with N being the number of elements in the sorted set and M the number of elements returned by the command, so if M is constant (for instance you always ask for the first ten elements with LIMIT) you can consider it O(log(N))
-
-            Return the all the elements in the sorted set at key with a score between min and max (including elements with score equal to min or max).
-            The elements having the same score are returned sorted lexicographically as ASCII strings (this follows from a property of Redis sorted sets and does not involve further computation).
-            Using the optional LIMIT it's possible to get only a range of the matching elements in an SQL-alike way. Note that if offset is large the commands needs to traverse the list for offset elements and this adds up to the O(M) figure.
-            Return value
-
-            Multi bulk reply, specifically a list of elements in the specified score range.
+        Return all the elements with score >= min and score <= max (a range query) from the sorted set
         """
-        cmd = "ZRANGEBYSCORE %s %s %s" % (key, min, max)
-        if limit:
-                cmd=cmd + " LIMIT %s %s" % (offset, count)
-        
-        if withscores:
-                cmd=cmd + " WITHSCORES"
+        return self.execute_command("ZRANGEBYSCORE", key, min, max)
 
-        self._write(cmd)
-
-        return self.get_response()
-
-    def zremrangebyscore(self, key, minrange=0, maxrange=2):
+    def zcount(self, key, min, max):
         """
-            ZREMRANGEBYSCORE key min max (Redis >= 1.1)
-
-            Time complexity: O(log(N))+O(M) with N being the number of elements in the sorted set and M the number of elements removed by the operation
-
-            Remove all the elements in the sorted set at key with a score between min and max (including elements with score equal to min or max).
-            Return value
-
-            Integer reply, specifically the number of elements removed.
+        Return the number of elements with score >= min and score <= max in the sorted set
         """
-        cmd = "ZREMRANGEBYSCORE %s %s %s" % (key, minrange, maxrange)
+        return self.execute_command("ZCOUNT", key, min, max)
 
-        self._write(cmd)
-
-        return self.get_response()
-    
     def zcard(self, key):
         """
-                ZCARD key (Redis >= 1.1)
-
-                Time complexity O(1)
-
-                Return the sorted set cardinality (number of elements). If the key does not exist 0 is returned, like for empty sorted sets.
-                Return value
-
-                Integer reply, specifically:
-
-                the cardinality (number of elements) of the set as an integer.
+        Return the cardinality (number of elements) of the sorted set at key
         """
-        value = self._encode(member)
-        self._write('ZCARD %s\r\n' % (key))
-        return self.get_response()
-    
+        return self.execute_command("ZCARD", key)
+
     def zscore(self, key, element):
         """
-            ZSCORE key element (Redis >= 1.1)
-
-            Time complexity O(1)
-
-            Return the score of the specified element of the sorted set at key. If the specified element does not exist in the sorted set, or the key does not exist at all, a special 'nil' value is returned.
-            Return value
-
-            Bulk reply
-
-            the score (a double precision floating point number) represented as string.
+        Return the score associated with the specified element of the sorted set at key
         """
-        value = self._encode(member)
-        self._write('ZSCORE %s %s\r\n' % (key, element))
-        return self.get_response()
-    
-    # HASH functions
+        return self.execute_command("ZSCORE", key, element)
 
-    def hset(self, key, hkey, hvalue, preserve=False):
+    def zremrangebyrank(self, key, min, max):
+        """
+        Remove all the elements with rank >= min and rank <= max from the sorted set
+        """
+        return self.execute_command("ZREMRANGEBYRANK", key, min, max)
+
+    def zremrangebyscore(self, key, min, max):
+        """
+        Remove all the elements with score >= min and score <= max from the sorted set
+        """
+        return self.execute_command("ZREMRANGEBYSCORE", key, min, max)
+
+    def zunionstore(self, dstkey, keys, aggregate=None):
+        """
+        Perform a union over a number of sorted sets with optional weight and aggregate
+        """
+        return self._zaggregate("ZUNIONSTORE", dstkey, keys, aggregate)
+
+    def zinterstore(self, dstkey, keys, aggregate=None):
+        """
+        Perform an intersection over a number of sorted sets with optional weight and aggregate
+        """
+        return self._zaggregate("ZINTERSTORE", dstkey, keys, aggregate)
+
+    def _zaggregate(self, command, dstkey, keys, aggregate):
+        pieces = [command, dstkey, len(keys)]
+        if isinstance(keys, types.DictType):
+            items = keys.items()
+            keys = [i[0] for i in items]
+            weights = [i[1] for i in items]
+        else:
+            weights = None
+
+        pieces.extend(keys)
+        if weights:
+            pieces.append("WEIGHTS")
+            pieces.extend(weights)
+        if aggregate:
+            pieces.append("AGGREGATE")
+            pieces.append(aggregate)
+
+        return self.execute_command(*pieces)
+
+    # Commands operating on hashes
+    def hset(self, key, field, value):
         """
         Set the hash field to the specified value. Creates the hash if needed
         """
-        if preserve: command = 'HSETNX'
-        else: command = 'HSET'
+        return self.execute_command("HSET", key, field, value)
 
-        hvalue = self._encode(hvalue)
-        self._write('%s %s %s %s\r\n%s\r\n' % (command, key, hkey, len(hvalue), hvalue))
-        return self.get_response()
+    def hsetnx(self, key, field, value):
+        """
+        Set the hash field to the specified value if the field does not exist. 
+        Creates the hash if needed
+        """
+        return self.execute_command("HSETNX", key, field, value)
     
-    def hget(self, key, hkey):
+    def hget(self, key, field):
         """
         Retrieve the value of the specified hash field.
         """
-        self._write('HGET %s %s\r\n%s\r\n' % (key, len(hkey), hkey))
-        return self.get_response()
-    
-    def hdel(self, key, hkey):
+        return self.execute_command("HGET", key, field)
+
+    def hmget(self, key, fields):
+        """
+        Get the hash values associated to the specified fields.
+        """
+        return self.execute_command("HMGET", key, *fields)
+
+    def hmset(self, key, mapping):
+        """
+        Set the hash fields to their respective values.
+        """
+        items = []
+        for pair in mapping.iteritems():
+            items.extend(pair)
+        return self.execute_command("HMSET", key, *items)
+
+    def hincr(self, key, field):
+        return self.hincrby(key, field, 1)
+
+    def hdecr(self, key, field):
+        return self.hincrby(key, field, -1)
+        
+    def hincrby(self, key, field, integer):
+        """
+        Increment the integer value of the hash at key on field with integer.
+        """
+        return self.execute_command("HINCRBY", key, field, integer)
+
+    def hexists(self, key, field):
+        """
+        Test for existence of a specified field in a hash
+        """
+        return self.execute_command("HEXISTS", key, field)
+
+    def hdel(self, key, field):
         """
         Remove the specified field from a hash
         """
-        self._write('HDEL %s %s\r\n%s\r\n' % (key, len(hkey), hkey))
-        return self.get_response()
-    
-    def hincrby(self, key, hkey, amt=1):
-        """
-        Increment the integer value of the hash at key on field with integer (key, hash_key, ammount)
-        """
-        self._write('HINCRBY %s %s %s\r\n' % (key, hkey, amt))
-        return self.get_response()
+        return self.execute_command("HDEL", key, field)
     
     def hlen(self, key):
         """
-        Return the number of entries (fields) contained in the hash stored at key. If the specified key does not exist, 0 is returned assuming an empty hash.
+        Return the number of items in a hash.
         """
-        self._write('HLEN %s\r\n' % (key))
-        return self.get_response()
+        return self.execute_command("HLEN", key)
     
     def hkeys(self, key):
         """
-        Return all keys in a hash.
+        Return all the fields in a hash.
         """
-        self._write('HKEYS %s\r\n' % (key))
-        return self.get_response()
+        return self.execute_command("HKEYS", key)
     
     def hvals(self, key):
         """
-        Return all values in a hash.
+        Return all the values in a hash.
         """
-        self._write('HVALS %s\r\n' % (key))
-        return self.get_response()
+        return self.execute_command("HVALS", key)
     
     @defer.inlineCallbacks
     def hgetall(self, key):
         """
-        Return all pairs of key/values in a hash.
+        Return all the fields and associated values in a hash.
         """
-        self._write('HGETALL %s\r\n' % (key))
-        result = {}
-        items = yield self.get_response()
-        for idx, k in enumerate(items):
-            if not idx%2:
-                result[k] = items[idx+1]
-        defer.returnValue(result)
+        d = yield self.execute_command("HGETALL", key)
+        defer.returnValue(dict(zip(d[::2], d[1::2])))
 
-    def hexists(self, key, hkey):
-        """
-        Test for existence of a specified field in a hash
-        """
-        self._write('HEXISTS %s %s\r\n%s\r\n' % (key, len(hkey), hkey))
-        return self.get_response()
-    
-    def hmget(self, key, arg_list):
-        """
-        Retrieve the values associated to the specified fields.
-        """
-        num_cmd = len(arg_list) + 2
-        cmd = "*%s\r\n" % num_cmd
-        cmd = cmd + "$5\r\nHMGET\r\n"
-        cmd = cmd + "$%s\r\n%s\r\n" % (len(key), key)
-        for m in arg_list:
-            cmd = cmd + "$%s\r\n%s\r\n" % (len(m), m)
+    # Sorting
+    def sort(self, key, start=None, end=None, by=None, get=None,
+            desc=None, alpha=False, store=None):
+        if (start is not None and end is not None) or \
+            (end is not None and start is None):
+            raise RedisError("``start`` and ``end`` must both be specified")
 
-        self._write(cmd+"\r\n")
-        return self.get_response()
+        pieces = [key]
+        if by is not None:
+            pieces.append("BY")
+            pieces.append(by)
+        if start is not None and end is not None:
+            pieces.append("LIMIT")
+            pieces.append(start)
+            pieces.append(end)
+        if get is not None:
+            pieces.append("GET")
+            pieces.append(get)
+        if desc:
+            pieces.append("DESC")
+        if alpha:
+            pieces.append("ALPHA")
+        if store is not None:
+            pieces.append("STORE")
+            pieces.append(store)
 
-    def hmset(self, key, kv_dict):
-        """
-        Set the respective fields to the respective values. HMSET replaces old values with new values.
-        """
-        num_cmd = (len(kv_dict) * 2) + 2
-        cmd = "*%s\r\n" % num_cmd
-        cmd = cmd + "$5\r\nHMSET\r\n"
-        cmd = cmd + "$%s\r\n%s\r\n" % (len(key), key)
-        
-        listo = []
-        [listo.extend(p) for p in kv_dict.iteritems()]
-        for m in listo:
-            mt = type(m)
-            if mt in (types.IntType, types.FloatType):
-                m = str(m)
-            elif mt is types.UnicodeType:
-                m = m.encode(self.charset)
-            elif mt is not types.StringType:
-                raise ValueError("Cannot store object of type %s: %s" % (mt, repr(m)))
-            cmd = cmd + "$%s\r\n%s\r\n" % (len(m), m)
-        self._write(cmd)
-        return self.get_response()
-    
-    # PUB/SUB protocol
+        return self.execute_command("SORT", *pieces)
 
-    def publish(self, channel, body):
+    # Transactions
+    # TODO
+
+    # Publish/Subscribe
+    # see the SubscriberProtocol for subscribing to channels
+    def publish(self, channel, message):
         """
-        Publish body to a channel 
+        Publish message to a channel 
         """
-        self._write('*3\r\n$7\r\nPUBLISH\r\n$%s\r\n%s\r\n$%si\r\n%s\r\n' % (len(channel), channel, len(body), body))
-        return self.get_response()
+        return self.execute_command("PUBLISH", channel, message)
+
+    # Persistence control commands
+    def save(self):
+        """
+        Synchronously save the DB on disk
+        """
+        return self.execute_command("SAVE")
+
+    def bgsave(self):
+        """
+        Asynchronously save the DB on disk
+        """
+        return self.execute_command("BGSAVE")
+
+    def lastsave(self):
+        """
+        Return the UNIX time stamp of the last successfully saving of the dataset on disk
+        """
+        return self.execute_command("LASTSAVE")
+
+    def shutdown(self):
+        """
+        Synchronously save the DB on disk, then shutdown the server
+        """
+        self.factory.continueTrying = False
+        return self.execute_command("SHUTDOWN")
+
+    def bgrewriteaof(self):
+        """
+        Rewrite the append only file in background when it gets too big
+        """
+        return self.execute_command("BGREWRITEAOF")
+
+    # Remote server control commands
+    def info(self):
+        """
+        Provide information and statistics about the server
+        """
+        return self.execute_command("INFO")
+
+    # monitor and slaveof should are missing
 
 
 class SubscriberProtocol(RedisProtocol):
@@ -848,29 +996,22 @@ class SubscriberProtocol(RedisProtocol):
             else:
                 self.messageReceived(*reply[-3:])
 
-    def __pubsub(self, command, channels):
-        if type(channels) is types.StringType:
-            channels = [channels]
-        elif type(channels) is types.UnicodeType:
-            channels = [channels.encode(self.charset, self.errors)]
-
-        if type(channels) is not types.ListType:
-            raise TypeError("channels must be either a string or a list of strings")
-
-        for chan in channels:
-            if type(chan) is types.UnicodeType:
-                chan = chan.encode(self.charset)
-            self._write('*2\r\n$%s\r\n%s\r\n$%s\r\n%s\r\n' % \
-                (len(command), command, len(chan), chan))
-
     def subscribe(self, channels):
-        self.__pubsub("SUBSCRIBE", channels)
+        if isinstance(channels, types.StringTypes):
+            channels = [channels]
+        return self.execute_command("SUBSCRIBE", *channels)
 
     def unsubscribe(self, channels):
-        self.__pubsub("UNSUBSCRIBE", channels)
+        if isinstance(channels, types.StringTypes):
+            channels = [channels]
+        return self.execute_command("UNSUBSCRIBE", *channels)
 
     def psubscribe(self, patterns):
-        self.__pubsub("PSUBSCRIBE", patterns)
+        if isinstance(patterns, types.StringTypes):
+            patterns = [patterns]
+        return self.execute_command("PSUBSCRIBE", *patterns)
 
     def punsubscribe(self, patterns):
-        self.__pubsub("PUNSUBSCRIBE", patterns)
+        if isinstance(patterns, types.StringTypes):
+            patterns = [patterns]
+        return self.execute_command("PUNSUBSCRIBE", *patterns)

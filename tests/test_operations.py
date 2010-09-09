@@ -26,9 +26,14 @@ class TestRedisConnections(unittest.TestCase):
         rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
         
         # test set() operation
-        for value in ("foo", "bar"):
-            yield rapi.set("test", value)
-            result = yield rapi.get("test")
+        for key, value in (("txredisapi:test1", "foo"), ("txredisapi:test2", "bar")):
+            yield rapi.set(key, value)
+            result = yield rapi.get(key)
             self.assertEqual(result, value)
+
+        d = {"txredisapi:a":1, "txredisapi:b":2}
+        yield rapi.mset(d)
+        values = yield rapi.mget(d.keys())
+        self.assertEqual(values, d.values())
 
         yield rapi.disconnect()

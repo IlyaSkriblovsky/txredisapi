@@ -18,7 +18,7 @@ def main():
         except:
             print 'ops'
 
-    result = yield conn.mget(*keys)
+    result = yield conn.mget(keys)
     print result
 
     # testing tags
@@ -26,7 +26,7 @@ def main():
     for k in keys:
         yield conn.set(k, "foobar")
 
-    result = yield conn.mget(*keys)
+    result = yield conn.mget(keys)
     print result
 
 if __name__ == "__main__":

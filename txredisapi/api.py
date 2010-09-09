@@ -137,7 +137,7 @@ class RedisShardingAPI(object):
 
         deferreds = []
         for node, keys in group.items():
-            nd=node.mget(*keys)
+            nd=node.mget(keys)
             deferreds.append(nd)
 
         result = []
