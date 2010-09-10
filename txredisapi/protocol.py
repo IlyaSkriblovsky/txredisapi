@@ -130,6 +130,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         if not line:
             return
+
         self.resetTimeout()
         token = line[0] # first byte indicates reply type
         data = line[1:]
@@ -149,6 +150,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.bulkDataReceived(None)
                 return
             else:
+                self.bulk_length += 2 # \r\n
                 self.setRawMode()
         elif token == self.MULTI_BULK:
             try:
@@ -176,7 +178,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         self.bulk_buffer += data
         if self.bulk_length == 0:
-            buffer = self.bulk_buffer
+            buffer = self.bulk_buffer[:-2]
             self.bulk_buffer = ""
             self.bulkDataReceived(buffer)
             self.setLineMode(extra=rest)
