@@ -13,6 +13,8 @@ for twisted <http://pypi.python.org/pypi/txredis/>`_, written by Dorian Raymer a
 
 For more information, see the `Redis Command Reference <http://code.google.com/p/redis/wiki/CommandReference>`_.
 
+NEWS: ``txredisapi`` is officially supported by `Cyclone <http://github.com/fiorix/cyclone>`_. But don't worry, I'll also keep this stand alone version up to date.
+
 Features
 ========
 - Lazy Connections
@@ -32,7 +34,7 @@ Just run **trial tests** (make sure redis is running!)
 Examples
 ========
 There are some examples of using ``txredisapi`` in the *examples/* directory.
-You need `TwistedWeb <http://twistedmatrix.com/trac/wiki/TwistedWeb>`_ or `Cyclone <http://github.com/fiorix/tornado>`_ to see it in action!
+You need `TwistedWeb <http://twistedmatrix.com/trac/wiki/TwistedWeb>`_ or `Cyclone <http://github.com/fiorix/cyclone>`_ to see it in action!
 
 Credits
 =======
