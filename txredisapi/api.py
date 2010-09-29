@@ -22,6 +22,8 @@ from twisted.internet import task, defer
 from txredisapi.hashring import HashRing
 import re
 
+from txredisapi import protocol
+
 _findhash = re.compile('.+\{(.*)\}.*', re.I)
 
 class RedisAPI(object):
@@ -126,12 +128,14 @@ class RedisShardingAPI(object):
             raise NotImplementedError("method '%s' cannot be sharded" % method)
 
     @defer.inlineCallbacks
-    def mget(self, *args):
+    def mget(self, keys, *args):
         """
         high-level mget, required because of the sharding support
         """
+
+        keys = protocol.list_or_args("mget", keys, args)
         group = collections.defaultdict(lambda: [])
-        for k in args:
+        for k in keys:
             node = self.__ring(k)
             group[node].append(k)
 
