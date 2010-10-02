@@ -349,7 +349,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         set a time to live in seconds on a key
         """
-        return self.execute_command("EXPIRE", name, time)
+        return self.execute_command("EXPIRE", key, time)
 
     def persist(self, key):
         """
