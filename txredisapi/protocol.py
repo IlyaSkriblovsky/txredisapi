@@ -220,7 +220,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             try:
                 element = int(data) if data.find('.') == -1 else float(data)
             except (ValueError):
-                element = data.decode(self.charset)
+                element = data
 
         if self.multi_bulk_length > 0:
             self.handleMultiBulkElement(element)
