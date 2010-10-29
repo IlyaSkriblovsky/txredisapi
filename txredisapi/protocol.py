@@ -437,13 +437,13 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Set a key to a string value if the key does not exist
         """
-        return self.execute_command("SETNX", name, value)
+        return self.execute_command("SETNX", key, value)
 
     def setex(self, key, time, value):
         """
         Set+Expire combo command
         """
-        return self.execute_command("SETEX", name, time, value)
+        return self.execute_command("SETEX", key, time, value)
 
     def mset(self, mapping):
         """
@@ -990,6 +990,9 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
 
 class SubscriberProtocol(RedisProtocol):
+    def connectionLost(self, reason):
+        pass
+
     def messageReceived(self, pattern, channel, message):
         pass
 
