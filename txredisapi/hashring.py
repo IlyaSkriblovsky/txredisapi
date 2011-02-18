@@ -22,8 +22,8 @@ class HashRing(object):
             crckey = zlib.crc32("%s:%d" % (node, x))
             self.ring[crckey] = node
             self.sorted_keys.append(crckey)
-        
-        self.sorted_keys.sort() 
+
+        self.sorted_keys.sort()
 
     def remove_node(self, node):
         self.nodes.remove(node)
@@ -31,7 +31,7 @@ class HashRing(object):
             crckey = zlib.crc32("%s:%d" % (node, x))
             self.ring.remove(crckey)
             self.sorted_keys.remove(crckey)
-        
+
     def get_node(self, key):
         n, i = self.get_node_pos(key)
         return n
@@ -50,6 +50,6 @@ class HashRing(object):
         node, pos = self.get_node_pos(key)
         for k in self.sorted_keys[pos:]:
             yield k, self.ring[k]
-    
+
     def __call__(self, key):
         return self.get_node(key)
