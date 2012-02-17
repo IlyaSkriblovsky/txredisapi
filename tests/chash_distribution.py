@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from txredisapi.hashring import HashRing
+from txredisapi import HashRing
 from collections import defaultdict
 
 if __name__ == "__main__":
@@ -15,11 +15,3 @@ if __name__ == "__main__":
     print "server\t\tkeys:"
     for a in node_histogram.keys():
         print "%s:\t%d" % (a, node_histogram[a])
-    
-    #print "Iterating from key to the end of the keyspace"
-    #b=0
-    #print "key\t\tnode"
-    #for k, node in ch.iter_nodes("d0ritos"):
-    #    b=b+1
-    #    print "%s: %s" % (k, node)
-    #print "len: %d" % b

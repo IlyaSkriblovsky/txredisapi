@@ -13,27 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi
+import txredisapi as redis
+from twisted.internet import defer
+from twisted.internet import reactor
 from twisted.trial import unittest
-from twisted.internet import defer, reactor
 
 redis_host="localhost"
 redis_port=6379
 
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
-    def testRedisConnection(self):
-        rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
-        
+    def testRedisOperations(self):
+        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+
         # test set() operation
         for key, value in (("txredisapi:test1", "foo"), ("txredisapi:test2", "bar")):
-            yield rapi.set(key, value)
-            result = yield rapi.get(key)
+            yield db.set(key, value)
+            result = yield db.get(key)
             self.assertEqual(result, value)
 
         d = {"txredisapi:a":1, "txredisapi:b":2}
-        yield rapi.mset(d)
-        values = yield rapi.mget(d.keys())
+        yield db.mset(d)
+        values = yield db.mget(d.keys())
         self.assertEqual(values, d.values())
 
-        yield rapi.disconnect()
+        yield db.disconnect()

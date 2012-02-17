@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi
-from twisted.trial import unittest
+import txredisapi as redis
 from twisted.internet import defer, reactor
+from twisted.trial import unittest
 
 redis_host="localhost"
 redis_port=6379
@@ -23,10 +23,9 @@ redis_port=6379
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisPublish(self):
-        rapi = yield txredisapi.RedisConnection(redis_host, redis_port)
-        
-        # test set() operation
-        for value in ("foo", "bar"):
-            yield rapi.publish("test_publish", value)
+        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
 
-        yield rapi.disconnect()
+        for value in ("foo", "bar"):
+            yield db.publish("test_publish", value)
+
+        yield db.disconnect()
