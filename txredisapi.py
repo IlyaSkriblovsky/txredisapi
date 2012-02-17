@@ -1,67 +1,60 @@
-""" 
-@file protocol.py
-@author Dorian Raymer
-@author Ludovico Magnocavallo
-@date 9/30/09
-@brief Twisted compatible version of redis.py
+# coding: utf-8
+# Copyright 2009 Alexandre Fiori
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#
+# Credits:
+#   The Protocol class is an improvement of txRedis' protocol,
+#   by Dorian Raymer and Ludovico Magnocavallo.
+#
+#   Sharding and Consistent Hashing implementation by Gleicon Moraes.
+#
 
-@mainpage
-
-txRedis is an asynchronous, Twisted, version of redis.py (included in the
-redis server source).
-
-The official Redis Command Reference:
-http://code.google.com/p/redis/wiki/CommandReference
-
-@section An example demonstrating how to use the client in your code:
-@code
-from twisted.internet import reactor
-from twisted.internet import protocol
-from twisted.internet import defer
-
-from txredis.protocol import Redis
-
-@defer.inlineCallbacks
-def main():
-    clientCreator = protocol.ClientCreator(reactor, Redis)
-    redis = yield clientCreator.connectTCP(HOST, PORT)
-    
-    res = yield redis.ping()
-    print res
-
-    res = yield redis.set('test', 42)
-    print res
-    
-    test = yield redis.get('test')
-    print res
-
-@endcode
-
-Redis google code project: http://code.google.com/p/redis/
-"""
-
-
-import types
+import bisect
+import collections
+import functools
+import operator
+import re
 import warnings
+import zlib
+
 from itertools import imap
 
-from twisted.python import log
 from twisted.internet import defer
+from twisted.internet import protocol
+from twisted.internet import reactor
+from twisted.internet import task
 from twisted.protocols import basic
 from twisted.protocols import policies
+from twisted.python import log
 
-
-class RedisError(Exception): pass
-class ConnectionError(RedisError): pass
-class ResponseError(RedisError): pass
-class InvalidResponse(RedisError): pass
-class InvalidData(RedisError): pass
+class RedisError(Exception):
+    pass
+class ConnectionError(RedisError):
+    pass
+class ResponseError(RedisError):
+    pass
+class InvalidResponse(RedisError):
+    pass
+class InvalidData(RedisError):
+    pass
 
 def list_or_args(command, keys, args):
     oldapi = bool(args)
     try:
         i = iter(keys)
-        if isinstance(keys, types.StringTypes):
+        if isinstance(keys, (str, unicode)):
             raise TypeError
     except TypeError:
         oldapi = True
@@ -74,9 +67,9 @@ def list_or_args(command, keys, args):
         keys.extend(args)
     return keys
 
-
 class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
-    """The main Redis client.
+    """
+    Redis client protocol.
     """
 
     ERROR = "-"
@@ -93,31 +86,38 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.bulk_buffer = ""
         self.multi_bulk_length = 0
         self.multi_bulk_reply = []
+        self.replyQueueLength = 0
         self.replyQueue = defer.DeferredQueue()
-        
+
+        self.transactions = 0
+        self.inTransaction = False
+
     @defer.inlineCallbacks
     def connectionMade(self):
-        if self.factory.db:
-            try:
-                r = yield self.select(self.factory.db)
-                if isinstance(r, ResponseError):
-                    raise r
-            except Exception, e:
-                self.factory.continueTrying = False
-                self.transport.loseConnection()
-                msg = "REDIS ERROR: Could not set DB=%s: %s" % (self.factory.db, e)
-                self.factory.error(msg)
-                if self.factory.isLazy:
-                    log.msg(msg)
-                defer.returnValue(None)
+        try:
+            response = yield self.select(self.factory.dbid)
+            if isinstance(response, ResponseError):
+                raise response
+        except Exception, e:
+            self.factory.continueTrying = False
+            self.transport.loseConnection()
+
+            msg = "Redis error: could not set dbid=%s: %s" % \
+                  (self.factory.dbid, str(e))
+            self.factory.connectionError(msg)
+            if self.factory.isLazy:
+                log.msg(msg)
+            defer.returnValue(None)
 
         self.connected = 1
-        self.factory.append(self)
+        self.factory.addConnection(self)
 
-    def connectionLost(self, reason):
+    def connectionLost(self, why):
         self.connected = 0
-        self.factory.remove(self)
-        basic.LineReceiver.connectionLost(self, reason)
+        self.factory.delConnection(self)
+        basic.LineReceiver.connectionLost(self, why)
+        while self.replyQueueLength < 0:
+            self.replyReceived(ConnectionError("Lost connection"))
 
     def lineReceived(self, line):
         """
@@ -144,8 +144,9 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             try:
                 self.bulk_length = long(data)
             except ValueError:
-                self.replyReceived(InvalidResponse("Cannot convert data '%s' to integer" % data))
-                return 
+                self.replyReceived(InvalidResponse(
+                 "Cannot convert data '%s' to integer" % data))
+                return
             if self.bulk_length == -1:
                 self.bulkDataReceived(None)
                 return
@@ -156,7 +157,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             try:
                 self.multi_bulk_length = long(data)
             except (TypeError, ValueError):
-                self.replyReceived(InvalidResponse("Cannot convert multi-response header '%s' to integer" % data))
+                self.replyReceived(InvalidResponse(
+                 "Cannot convert multi-response header '%s' to integer" % data))
                 self.multi_bulk_length = 0
                 return
             if self.multi_bulk_length == -1:
@@ -178,9 +180,9 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         self.bulk_buffer += data
         if self.bulk_length == 0:
-            buffer = self.bulk_buffer[:-2]
+            bulk_buffer = self.bulk_buffer[:-2]
             self.bulk_buffer = ""
-            self.bulkDataReceived(buffer)
+            self.bulkDataReceived(bulk_buffer)
             self.setLineMode(extra=rest)
 
     def errorReceived(self, data):
@@ -188,27 +190,46 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Error from server.
         """
         reply = ResponseError(data[4:] if data[:4] == "ERR " else data)
-        self.replyReceived(reply)
+
+        if self.multi_bulk_length:
+            self.handleMultiBulkElement(reply)
+        else:
+            self.replyReceived(reply)
 
     def statusReceived(self, data):
         """
         Single line status should always be a string.
         """
-        if data == "none":
-            reply = None # should this happen here in the client?
+        #if data == "none":
+        #    reply = None # should this happen here in the client?
+        #else:
+        #    reply = data
+
+        reply = data
+        if reply == "QUEUED":
+            self.transactions += 1
+            self.replyReceived(reply)
+            return
+
+        if self.multi_bulk_length:
+            self.handleMultiBulkElement(reply)
         else:
-            reply = data 
-        self.replyReceived(reply)
+            self.replyReceived(reply)
 
     def integerReceived(self, data):
         """
         For handling integer replies.
         """
         try:
-            reply = int(data) 
+            reply = int(data)
         except ValueError:
-            reply = InvalidResponse("Cannot convert data '%s' to integer" % data)
-        self.replyReceived(reply)
+            reply = InvalidResponse(
+            "Cannot convert data '%s' to integer" % data)
+
+        if self.multi_bulk_length:
+            self.handleMultiBulkElement(reply)
+        else:
+            self.replyReceived(reply)
 
     def bulkDataReceived(self, data):
         """
@@ -230,8 +251,11 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             self.replyReceived(element)
 
     def handleMultiBulkElement(self, element):
+        if self.inTransaction:
+            self.transactions -= 1
         self.multi_bulk_reply.append(element)
         self.multi_bulk_length = self.multi_bulk_length - 1
+
         if self.multi_bulk_length == 0:
             self.multiBulkDataReceived()
 
@@ -239,6 +263,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Receipt of list or set of bulk data elements.
         """
+        if self.inTransaction and self.transactions == 0:
+            self.inTransaction = False
         reply = self.multi_bulk_reply
         self.multi_bulk_reply = []
         self.multi_bulk_length = 0
@@ -249,119 +275,125 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Complete reply received and ready to be pushed to the requesting
         function.
         """
+        self.replyQueueLength += 1
         self.replyQueue.put(reply)
-
 
     def get_response(self):
         """return deferred which will fire with response from server.
         """
+        self.replyQueueLength -= 1
         return self.replyQueue.get()
 
     def encode(self, s):
-        if isinstance(s, types.StringType):
+        if isinstance(s, str):
             return s
-        if isinstance(s, types.UnicodeType):
+        if isinstance(s, unicode):
             try:
                 return s.encode(self.charset, self.errors)
             except UnicodeEncodeError, e:
-                raise InvalidData("Error encoding unicode value '%s': %s" % (repr(s), e))
+                raise InvalidData(
+                "Error encoding unicode value '%s': %s" % (repr(s), e))
         return str(s)
 
     def execute_command(self, *args):
-        cmds = ["$%s\r\n%s\r\n" % (len(enc_value), enc_value)
-            for enc_value in imap(self.encode, args)]
-        self.transport.write("*%s\r\n%s" % (len(cmds), "".join(cmds)))
-        return self.get_response()
-    
+        if self.connected == 0:
+            raise ConnectionError("Not connected")
+        else:
+            cmds = ["$%s\r\n%s\r\n" % (len(enc_value), enc_value)
+                for enc_value in imap(self.encode, args)]
+            self.transport.write("*%s\r\n%s" % (len(cmds), "".join(cmds)))
+            return self.get_response()
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+    ##
     # REDIS COMMANDS
-    # 
+    ##
 
     # Connection handling
     def quit(self):
         """
-        close the connection
+        Close the connection
         """
         self.factory.continueTrying = False
         return self.execute_command("QUIT")
 
     def auth(self, password):
         """
-        simple password authentication if enabled
+        Simple password authentication if enabled
         """
         return self.execute_command("AUTH", password)
 
     def ping(self):
         """
-        ping the server
+        Ping the server
         """
         return self.execute_command("PING")
 
     # Commands operating on all value types
     def exists(self, key):
         """
-        test if a key exists
+        Test if a key exists
         """
         return self.execute_command("EXISTS", key)
 
     def delete(self, *keys):
         """
-        delete one or more keys
+        Delete one or more keys
         """
         return self.execute_command("DEL", *keys)
 
     def type(self, key):
         """
-        return the type of the value stored at key
+        Return the type of the value stored at key
         """
         return self.execute_command("TYPE", key)
 
     def keys(self, pattern="*"):
         """
-        return all the keys matching a given pattern
+        Return all the keys matching a given pattern
         """
         return self.execute_command("KEYS", pattern)
 
     def randomkey(self):
         """
-        return a random key from the key space
+        Return a random key from the key space
         """
         return self.execute_command("RANDOMKEY")
 
     def rename(self, oldkey, newkey):
         """
-        rename the old key in the new one, destroying the newname key if it already exists
+        Rename the old key in the new one,
+        destroying the newname key if it already exists
         """
         return self.execute_command("RENAME", oldkey, newkey)
 
     def renamenx(self, oldkey, newkey):
         """
-        rename the oldname key to newname, if the newname key does not already exist
+        Rename the oldname key to newname,
+        if the newname key does not already exist
         """
         return self.execute_command("RENAMENX", oldkey, newkey)
 
     def dbsize(self):
         """
-        return the number of keys in the current db
+        Return the number of keys in the current db
         """
         return self.execute_command("DBSIZE")
 
     def expire(self, key, time):
         """
-        set a time to live in seconds on a key
+        Set a time to live in seconds on a key
         """
         return self.execute_command("EXPIRE", key, time)
 
     def persist(self, key):
         """
-        remove the expire from a key
+        Remove the expire from a key
         """
         return self.execute_command("PERSIST", key)
 
     def ttl(self, key):
         """
-        get the time to live in seconds of a key
+        Get the time to live in seconds of a key
         """
         return self.execute_command("TTL", key)
 
@@ -413,26 +445,26 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             return self.getset(key, value)
 
         return self.execute_command("SET", key, value)
-    
+
     def get(self, key):
         """
         Return the string value of the key
         """
         return self.execute_command("GET", key)
-    
+
     def getset(self, key, value):
         """
         Set a key to a string returning the old value of the key
         """
         return self.execute_command("GETSET", key, value)
-        
+
     def mget(self, keys, *args):
         """
         Multi-get, return the strings values of the keys
         """
         keys = list_or_args("mget", keys, args)
         return self.execute_command("MGET", *keys)
-    
+
     def setnx(self, key, value):
         """
         Set a key to a string value if the key does not exist
@@ -447,7 +479,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def mset(self, mapping):
         """
-        Set the respective fields to the respective values. HMSET replaces old values with new values.
+        Set the respective fields to the respective values.
+        HMSET replaces old values with new values.
         """
         items = []
         for pair in mapping.iteritems():
@@ -456,7 +489,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def msetnx(self, mapping):
         """
-        Set multiple keys to multiple values in a single atomic operation if none of the keys already exist
+        Set multiple keys to multiple values in a single atomic
+        operation if none of the keys already exist
         """
         items = []
         for pair in mapping.iteritems():
@@ -518,7 +552,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Append an element to the head of the List value at key
         """
         return self.execute_command("LPUSH", key, value)
-    
+
     def llen(self, key):
         """
         Return the length of the List value at key
@@ -530,13 +564,13 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Return a range of elements from the List at key
         """
         return self.execute_command("LRANGE", key, start, end)
-        
+
     def ltrim(self, key, start, end):
         """
         Trim the list at key to the specified range of elements
         """
         return self.execute_command("LTRIM", key, start, end)
-    
+
     def lindex(self, key, index):
         """
         Return the element at index position from the List at key
@@ -551,10 +585,11 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def lrem(self, key, count, value):
         """
-        Remove the first-N, last-N, or all the elements matching value from the List at key
+        Remove the first-N, last-N, or all the elements matching value
+        from the List at key
         """
         return self.execute_command("LREM", key, count, value)
-        
+
     def pop(self, key, tail=False):
         warnings.warn(DeprecationWarning(
             "redis.pop() has been deprecated, "
@@ -578,7 +613,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Blocking LPOP
         """
-        if isinstance(keys, types.StringTypes):
+        if isinstance(keys, (str, unicode)):
             keys = [keys]
         else:
             keys = list(keys)
@@ -590,29 +625,29 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Blocking RPOP
         """
-        if isinstance(keys, types.StringTypes):
+        if isinstance(keys, (str, unicode)):
             keys = [keys]
         else:
             keys = list(keys)
 
         keys.append(timeout)
         return self.execute_command("BRPOP", *keys)
-    
+
     def rpoplpush(self, srckey, dstkey):
         """
-        Return and remove (atomically) the last element of the source 
-        List  stored at srckey and push the same element to the 
+        Return and remove (atomically) the last element of the source
+        List  stored at srckey and push the same element to the
         destination List stored at dstkey
         """
         return self.execute_command("RPOPLPUSH", srckey, dstkey)
-    
+
     # Commands operating on sets
     def sadd(self, key, member):
         """
         Add the specified member to the Set value at key
         """
         return self.execute_command("SADD", key, member)
-        
+
     def srem(self, key, member):
         """
         Remove the specified member from the Set value at key
@@ -636,23 +671,23 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Return the number of elements (the cardinality) of the Set at key
         """
         return self.execute_command("SCARD", key)
-    
+
     def sismember(self, key, value):
         """
         Test if the specified value is a member of the Set at key
         """
         return self.execute_command("SISMEMBER", key, value)
-    
+
     def sinter(self, keys, *args):
         """
         Return the intersection between the Sets stored at key1, key2, ..., keyN
         """
         keys = list_or_args("sinter", keys, args)
         return self.execute_command("SINTER", *keys)
-    
+
     def sinterstore(self, dstkey, keys, *args):
         """
-        Compute the intersection between the Sets stored 
+        Compute the intersection between the Sets stored
         at key1, key2, ..., keyN, and store the resulting Set at dstkey
         """
         keys = list_or_args("sinterstore", keys, args)
@@ -667,7 +702,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def sunionstore(self, dstkey, keys, *args):
         """
-        Compute the union between the Sets stored 
+        Compute the union between the Sets stored
         at key1, key2, ..., keyN, and store the resulting Set at dstkey
         """
         keys = list_or_args("sunionstore", keys, args)
@@ -675,14 +710,15 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def sdiff(self, keys, *args):
         """
-        Return the difference between the Set stored at key1 and all the Sets key2, ..., keyN
+        Return the difference between the Set stored at key1 and
+        all the Sets key2, ..., keyN
         """
         keys = list_or_args("sdiff", keys, args)
         return self.execute_command("SDIFF", *keys)
 
     def sdiffstore(self, dstkey, keys, *args):
         """
-        Compute the difference between the Set key1 and all the 
+        Compute the difference between the Set key1 and all the
         Sets key2, ..., keyN, and store the resulting Set at dstkey
         """
         keys = list_or_args("sdiffstore", keys, args)
@@ -703,17 +739,17 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     # Commands operating on sorted zsets (sorted sets)
     def zadd(self, key, score, member):
         """
-        Add the specified member to the Sorted Set value at key 
+        Add the specified member to the Sorted Set value at key
         or update the score if it already exist
         """
         return self.execute_command("ZADD", key, score, member)
-        
+
     def zrem(self, key, member):
         """
         Remove the specified member from the Sorted Set value at key
         """
         return self.execute_command("ZREM", key, member)
-    
+
     def zincr(self, key, member):
         return self.zincrby(key, 1, member)
 
@@ -722,21 +758,21 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def zincrby(self, key, increment, member):
         """
-        If the member already exists increment its score by increment, 
+        If the member already exists increment its score by increment,
         otherwise add the member setting increment as score
         """
         return self.execute_command("ZINCRBY", key, increment, member)
 
     def zrank(self, key, member):
         """
-        Return the rank (or index) or member in the sorted set at key, 
+        Return the rank (or index) or member in the sorted set at key,
         with scores being ordered from low to high
         """
         return self.execute_command("ZRANK", key, member)
 
     def zrevrank(self, key, member):
         """
-        Return the rank (or index) or member in the sorted set at key, 
+        Return the rank (or index) or member in the sorted set at key,
         with scores being ordered from high to low
         """
         return self.execute_command("ZREVRANK", key, member)
@@ -747,24 +783,26 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         """
         return self.execute_command("ZRANGE", key, start, end)
-   
+
     def zrevrange(self, key, start, end):
         """
-        Return a range of elements from the sorted set at key, 
-        exactly like ZRANGE, but the sorted set is ordered in 
+        Return a range of elements from the sorted set at key,
+        exactly like ZRANGE, but the sorted set is ordered in
         traversed in reverse order, from the greatest to the smallest score
         """
         return self.execute_command("ZREVRANGE", key, start, end)
-    
+
     def zrangebyscore(self, key, min, max):
         """
-        Return all the elements with score >= min and score <= max (a range query) from the sorted set
+        Return all the elements with score >= min and score <= max
+        (a range query) from the sorted set
         """
         return self.execute_command("ZRANGEBYSCORE", key, min, max)
 
     def zcount(self, key, min, max):
         """
-        Return the number of elements with score >= min and score <= max in the sorted set
+        Return the number of elements with score >= min and score <= max
+        in the sorted set
         """
         return self.execute_command("ZCOUNT", key, min, max)
 
@@ -776,37 +814,42 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def zscore(self, key, element):
         """
-        Return the score associated with the specified element of the sorted set at key
+        Return the score associated with the specified element of the sorted
+        set at key
         """
         return self.execute_command("ZSCORE", key, element)
 
     def zremrangebyrank(self, key, min, max):
         """
-        Remove all the elements with rank >= min and rank <= max from the sorted set
+        Remove all the elements with rank >= min and rank <= max from
+        the sorted set
         """
         return self.execute_command("ZREMRANGEBYRANK", key, min, max)
 
     def zremrangebyscore(self, key, min, max):
         """
-        Remove all the elements with score >= min and score <= max from the sorted set
+        Remove all the elements with score >= min and score <= max from
+        the sorted set
         """
         return self.execute_command("ZREMRANGEBYSCORE", key, min, max)
 
     def zunionstore(self, dstkey, keys, aggregate=None):
         """
-        Perform a union over a number of sorted sets with optional weight and aggregate
+        Perform a union over a number of sorted sets with optional
+        weight and aggregate
         """
         return self._zaggregate("ZUNIONSTORE", dstkey, keys, aggregate)
 
     def zinterstore(self, dstkey, keys, aggregate=None):
         """
-        Perform an intersection over a number of sorted sets with optional weight and aggregate
+        Perform an intersection over a number of sorted sets with optional
+        weight and aggregate
         """
         return self._zaggregate("ZINTERSTORE", dstkey, keys, aggregate)
 
     def _zaggregate(self, command, dstkey, keys, aggregate):
         pieces = [command, dstkey, len(keys)]
-        if isinstance(keys, types.DictType):
+        if isinstance(keys, dict):
             items = keys.items()
             keys = [i[0] for i in items]
             weights = [i[1] for i in items]
@@ -832,11 +875,11 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def hsetnx(self, key, field, value):
         """
-        Set the hash field to the specified value if the field does not exist. 
+        Set the hash field to the specified value if the field does not exist.
         Creates the hash if needed
         """
         return self.execute_command("HSETNX", key, field, value)
-    
+
     def hget(self, key, field):
         """
         Retrieve the value of the specified hash field.
@@ -863,7 +906,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def hdecr(self, key, field):
         return self.hincrby(key, field, -1)
-        
+
     def hincrby(self, key, field, integer):
         """
         Increment the integer value of the hash at key on field with integer.
@@ -881,25 +924,25 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Remove the specified field from a hash
         """
         return self.execute_command("HDEL", key, field)
-    
+
     def hlen(self, key):
         """
         Return the number of items in a hash.
         """
         return self.execute_command("HLEN", key)
-    
+
     def hkeys(self, key):
         """
         Return all the fields in a hash.
         """
         return self.execute_command("HKEYS", key)
-    
+
     def hvals(self, key):
         """
         Return all the values in a hash.
         """
         return self.execute_command("HVALS", key)
-    
+
     @defer.inlineCallbacks
     def hgetall(self, key):
         """
@@ -937,13 +980,34 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         return self.execute_command("SORT", *pieces)
 
     # Transactions
-    # TODO
+    # multi() will return a deferred with a "connection" object
+    # That object must be used for further interactions within
+    # the transaction. At the end, either exec() or discard()
+    # must be executed.
+    @defer.inlineCallbacks
+    def multi(self):
+        response = yield self.execute_command("MULTI")
+        if response == "OK":
+            self.inTransaction = True
+        defer.returnValue(self)
+
+    def commit(self):
+        if self.inTransaction is False:
+            raise RedisError("Not in transaction")
+        return self.execute_command("EXEC")
+
+    def discard(self):
+        if self.inTransaction is False:
+            raise RedisError("Not in transaction")
+        self.transactions = 0
+        self.inTransaction = False
+        return self.execute_command("DISCARD")
 
     # Publish/Subscribe
     # see the SubscriberProtocol for subscribing to channels
     def publish(self, channel, message):
         """
-        Publish message to a channel 
+        Publish message to a channel
         """
         return self.execute_command("PUBLISH", channel, message)
 
@@ -962,7 +1026,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def lastsave(self):
         """
-        Return the UNIX time stamp of the last successfully saving of the dataset on disk
+        Return the UNIX time stamp of the last successfully saving of the
+        dataset on disk
         """
         return self.execute_command("LASTSAVE")
 
@@ -990,7 +1055,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
 
 class SubscriberProtocol(RedisProtocol):
-    def connectionLost(self, reason):
+    def connectionLost(self, why):
         pass
 
     def messageReceived(self, pattern, channel, message):
@@ -1004,21 +1069,375 @@ class SubscriberProtocol(RedisProtocol):
                 self.messageReceived(*reply[-3:])
 
     def subscribe(self, channels):
-        if isinstance(channels, types.StringTypes):
+        if isinstance(channels, (str, unicode)):
             channels = [channels]
         return self.execute_command("SUBSCRIBE", *channels)
 
     def unsubscribe(self, channels):
-        if isinstance(channels, types.StringTypes):
+        if isinstance(channels, (str, unicode)):
             channels = [channels]
         return self.execute_command("UNSUBSCRIBE", *channels)
 
     def psubscribe(self, patterns):
-        if isinstance(patterns, types.StringTypes):
+        if isinstance(patterns, (str, unicode)):
             patterns = [patterns]
         return self.execute_command("PSUBSCRIBE", *patterns)
 
     def punsubscribe(self, patterns):
-        if isinstance(patterns, types.StringTypes):
+        if isinstance(patterns, (str, unicode)):
             patterns = [patterns]
         return self.execute_command("PUNSUBSCRIBE", *patterns)
+
+
+class ConnectionHandler(object):
+    def __init__(self, factory):
+        self._factory = factory
+        self._connected = factory.deferred
+
+    def _wait_pool_cleanup(self, deferred):
+        if self._factory.size == 0:
+            deferred.callback(True)
+
+    def disconnect(self):
+        self._factory.continueTrying = 0
+        for conn in self._factory.pool:
+            try:
+                conn.transport.loseConnection()
+            except:
+                pass
+
+        d = defer.Deferred()
+        t = task.LoopingCall(self._wait_pool_cleanup, d)
+        d.addCallback(lambda ign: t.stop())
+        t.start(.5)
+        return d
+
+    def __getattr__(self, method):
+        try:
+            return getattr(self._factory.getConnection, method)
+        except Exception, e:
+            d = defer.Deferred()
+            d.errback(e)
+            return lambda *ign: d
+
+    def __repr__(self):
+        try:
+            cli = self._factory.pool[0].transport.getPeer()
+        except:
+            return "<Redis Connection: Not connected>"
+        else:
+            return "<Redis Connection: %s:%s - %d connection(s)>" % \
+                   (cli.host, cli.port, self._factory.size)
+
+
+ShardedMethods = [
+    "decr",
+    "delete",
+    "exists",
+    "expire",
+    "get",
+    "get_type",
+    "getset",
+    "hdel",
+    "hexists",
+    "hget",
+    "hgetall",
+    "hincrby",
+    "hkeys",
+    "hlen",
+    "hmget",
+    "hmset",
+    "hset",
+    "hvals",
+    "incr",
+    "lindex",
+    "llen",
+    "lrange",
+    "lrem",
+    "lset",
+    "ltrim",
+    "pop",
+    "publish",
+    "push",
+    "rename",
+    "sadd",
+    "set",
+    "setex",
+    "setnx",
+    "sismember",
+    "smembers",
+    "srem",
+    "ttl",
+    "zadd",
+    "zcard",
+    "zincr",
+    "zrange",
+    "zrangebyscore",
+    "zrem",
+    "zremrangebyscore",
+    "zrevrange",
+    "zscore",
+]
+
+_findhash = re.compile('.+\{(.*)\}.*', re.I)
+
+class HashRing(object):
+    """Consistent hash for redis API"""
+    def __init__(self, nodes=[], replicas=160):
+        self.nodes=[]
+        self.replicas=replicas
+        self.ring={}
+        self.sorted_keys=[]
+
+        for n in nodes:
+            self.add_node(n)
+
+    def add_node(self, node):
+        self.nodes.append(node)
+        for x in xrange(self.replicas):
+            crckey = zlib.crc32("%s:%d" % (node, x))
+            self.ring[crckey] = node
+            self.sorted_keys.append(crckey)
+
+        self.sorted_keys.sort()
+
+    def remove_node(self, node):
+        self.nodes.remove(node)
+        for x in xrange(self.replicas):
+            crckey = zlib.crc32("%s:%d" % (node, x))
+            self.ring.remove(crckey)
+            self.sorted_keys.remove(crckey)
+
+    def get_node(self, key):
+        n, i = self.get_node_pos(key)
+        return n
+    #self.get_node_pos(key)[0]
+
+    def get_node_pos(self, key):
+        if len(self.ring) == 0:
+            return [None, None]
+        crc = zlib.crc32(key)
+        idx = bisect.bisect(self.sorted_keys, crc)
+        idx = min(idx, (self.replicas * len(self.nodes))-1) # prevents out of range index
+        return [self.ring[self.sorted_keys[idx]], idx]
+
+    def iter_nodes(self, key):
+        if len(self.ring) == 0: yield None, None
+        node, pos = self.get_node_pos(key)
+        for k in self.sorted_keys[pos:]:
+            yield k, self.ring[k]
+
+    def __call__(self, key):
+        return self.get_node(key)
+
+class ShardedConnectionHandler(object):
+    def __init__(self, connections):
+        if isinstance(connections, defer.DeferredList):
+            self._ring = None
+            connections.addCallback(self._makeRing)
+        else:
+            self._ring = HashRing(connections)
+
+    def _makeRing(self, connections):
+        connections = map(operator.itemgetter(1), connections)
+        self._ring = HashRing(connections)
+        return self
+
+    @defer.inlineCallbacks
+    def disconnect(self):
+        if not self._ring:
+            raise ConnectionError("Not connected")
+
+        for conn in self._ring.nodes:
+            yield conn.disconnect()
+        defer.returnValue(True)
+
+    def _wrap(self, method, *args, **kwargs):
+        try:
+            key = args[0]
+            assert isinstance(key, (str, unicode))
+        except:
+            raise ValueError(
+                  "Method '%s' requires a key as the first argument" % method)
+
+        m = _findhash.match(key)
+        if m is not None and len(m.groups()) >= 1:
+            node = self._ring(g.groups()[0])
+        else:
+            node = self._ring(key)
+
+        return getattr(node, method)(*args, **kwargs)
+
+    def __getattr__(self, method):
+        if method in ShardedMethods:
+            return functools.partial(self._wrap, method)
+        else:
+            raise NotImplementedError("Method '%s' cannot be sharded" % method)
+
+    @defer.inlineCallbacks
+    def mget(self, keys, *args):
+        """
+        high-level mget, required because of the sharding support
+        """
+
+        keys = list_or_args("mget", keys, args)
+        group = collections.defaultdict(lambda: [])
+        for k in keys:
+            node = self._ring(k)
+            group[node].append(k)
+
+        deferreds = []
+        for node, keys in group.items():
+            nd=node.mget(keys)
+            deferreds.append(nd)
+
+        result = []
+        response = yield defer.DeferredList(deferreds)
+        for (success, values) in response:
+            if success:
+                result += values
+
+        defer.returnValue(result)
+
+    def __repr__(self):
+        nodes = []
+        for conn in self._ring.nodes:
+            try:
+                cli = conn._factory.pool[0].transport.getPeer()
+            except:
+                pass
+            else:
+                nodes.append("%s:%s/%d" % \
+                             (cli.host, cli.port, conn._factory.size))
+        return "<Redis Sharded Connection: %s>" % ", ".join(nodes)
+
+
+class RedisFactory(protocol.ReconnectingClientFactory):
+    maxDelay = 10
+    protocol = RedisProtocol
+
+    def __init__(self, dbid, poolsize, isLazy=False):
+        if not isinstance(poolsize, int):
+            raise ValueError("Redis poolsize must be an integer, not %s" % \
+                             repr(poolsize))
+
+        if not isinstance(dbid, int):
+            raise ValueError("Redis dbid must be an integer, not %s" % \
+                             repr(dbid))
+
+        self.dbid = dbid
+        self.poolsize = poolsize
+        self.isLazy = isLazy
+
+        self.idx = 0
+        self.size = 0
+        self.pool = []
+        self.deferred = defer.Deferred()
+        self.handler = ConnectionHandler(self)
+
+    def addConnection(self, conn):
+        self.pool.append(conn)
+        self.size = len(self.pool)
+        if self.deferred:
+            if self.size == self.poolsize:
+                self.deferred.callback(self.handler)
+                self.deferred = None
+
+    def delConnection(self, conn):
+        try:
+            self.pool.remove(conn)
+        except Exception, e:
+            log.msg("Could not remove connection from pool: %s" % str(e))
+
+        self.size = len(self.pool)
+
+    def connectionError(self, why):
+        if self.deferred:
+            self.deferred.errback(ValueError(why))
+            self.deferred = None
+
+    @property
+    def getConnection(self):
+        if not self.size:
+            raise ConnectionError("Not connected")
+
+        n = self.size
+        while n:
+            conn = self.pool[self.idx % self.size]
+            self.idx += 1
+            if conn.inTransaction is False:
+                return conn
+            n -= 1
+
+        raise RedisError("In transaction")
+
+
+def makeConnection(host, port, dbid, poolsize, reconnect, isLazy):
+    factory = RedisFactory(dbid, poolsize, isLazy)
+    factory.continueTrying = reconnect
+    for x in xrange(poolsize):
+        reactor.connectTCP(host, port, factory)
+
+    if isLazy:
+        return factory.handler
+    else:
+        return factory.deferred
+
+def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy):
+    err = "Please use a list or tuple of host:port for sharded connections"
+    if not isinstance(hosts, (list, tuple)):
+        raise ValueError(err)
+
+    connections = []
+    for item in hosts:
+        try:
+            host, port = item.split(":")
+            port = int(port)
+        except:
+            raise ValueError(err)
+
+    c = makeConnection(host, port, dbid, poolsize, reconnect, isLazy)
+    connections.append(c)
+
+    if isLazy:
+        return ShardedConnectionHandler(connections)
+    else:
+        deferred = defer.DeferredList(connections)
+        ShardedConnectionHandler(deferred)
+        return deferred
+
+def Connection(host="localhost", port=6379, dbid=0, reconnect=True):
+    return makeConnection(host, port, dbid, 1, reconnect, False)
+
+def lazyConnection(host="localhost", port=6379, dbid=0, reconnect=True):
+    return makeConnection(host, port, dbid, 1, reconnect, True)
+
+def ConnectionPool(host="localhost", port=6379, dbid=0,
+                   poolsize=10, reconnect=True):
+    return makeConnection(host, port, dbid, poolsize, reconnect, False)
+
+def lazyConnectionPool(host="localhost", port=6379, dbid=0,
+                       poolsize=10, reconnect=True):
+    return makeConnection(host, port, dbid, poolsize, reconnect, True)
+
+def ShardedConnection(hosts, dbid=0, reconnect=True):
+    return makeShardedConnection(hosts, dbid, 1, reconnect, False)
+
+def lazyShardedConnection(hosts, dbid=0, reconnect=True):
+    return makeShardedConnection(hosts, dbid, 1, reconnect, True)
+
+def ShardedConnectionPool(hosts, dbid=0, poolsize=10, reconnect=True):
+    return makeShardedConnection(hosts, dbid, poolsize, reconnect, False)
+
+def lazyShardedConnectionPool(hosts, dbid=0, poolsize=10, reconnect=True):
+    return makeShardedConnection(hosts, dbid, poolsize, reconnect, True)
+
+__all__ = [
+    Connection, lazyConnection,
+    ConnectionPool, lazyConnectionPool,
+    ShardedConnection, lazyShardedConnection,
+    ShardedConnectionPool, lazyShardedConnectionPool,
+]
+
+__version__ = version = "0.3"
+__author__ = "Alexandre Fiori"
