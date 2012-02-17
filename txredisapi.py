@@ -1267,7 +1267,7 @@ class ShardedConnectionHandler(object):
 
         m = _findhash.match(key)
         if m is not None and len(m.groups()) >= 1:
-            node = self._ring(g.groups()[0])
+            node = self._ring(m.groups()[0])
         else:
             node = self._ring(key)
 

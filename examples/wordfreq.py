@@ -1,8 +1,11 @@
-#!/user/bin/python
-#
-import txredisapi
-from twisted.internet import defer, reactor
+#!/usr/bin/env python
+# coding: utf-8
+
 import sys
+import txredisapi as redis
+
+from twisted.internet import defer
+from twisted.internet import reactor
 
 def wordfreq(file):
     try:
@@ -12,7 +15,7 @@ def wordfreq(file):
     except Exception, e:
         print "Exception: %s" % e
         return None
-   
+
     wf={}
     wlist = words.split()
     for b in wlist:
@@ -26,13 +29,11 @@ def wordfreq(file):
 
 @defer.inlineCallbacks
 def main(wordlist):
-    db = yield txredisapi.RedisShardingConnection(("localhost:6379", "localhost:6380"))
+    db = yield redis.ShardedConnection(("localhost:6379", "localhost:6380"))
     for k in wordlist:
         yield db.set(k, 1)
 
     reactor.stop()
-
-
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env twistd -ny
 # coding: utf-8
 # Copyright 2009 Alexandre Fiori
 #
@@ -21,14 +21,14 @@
 # You may not use regular commands (like get, set, etc...) on the
 # subscriber connection.
 
-from txredisapi import SubscriberFactory
-from txredisapi.protocol import SubscriberProtocol
+import txredisapi as redis
 
+from twisted.application import internet
+from twisted.application import service
 from twisted.internet import reactor
-from twisted.application import service, internet
 
 
-class myProtocol(SubscriberProtocol):
+class myProtocol(redis.SubscriberProtocol):
     def connectionMade(self):
         print "waiting for messages..."
         print "use the redis client to send messages:"
@@ -49,7 +49,7 @@ class myProtocol(SubscriberProtocol):
         print "lost connection:", reason
 
 
-class myFactory(SubscriberFactory):
+class myFactory(redis.SubscriberFactory):
     # SubscriberFactory is a wapper for the ReconnectingClientFactory
     maxDelay = 120
     continueTrying = True

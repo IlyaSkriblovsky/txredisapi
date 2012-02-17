@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import txredisapi
-from twisted.internet import defer, reactor
+import txredisapi as redis
+
+from twisted.internet import defer
+from twisted.internet import reactor
 
 @defer.inlineCallbacks
 def main():
     # run two redis servers, one at port 6379 and another in 6380
-    #conn = yield txredisapi.lazyRedisShardingConnection(["localhost:6379", "localhost:6380"])
-    conn = yield txredisapi.RedisShardingConnection(["localhost:6379", "localhost:6380"])
+    conn = yield redis.ShardedConnection(["localhost:6379", "localhost:6380"])
     print repr(conn)
 
     keys = ["test:%d" % x for x in xrange(100)]
@@ -28,6 +29,8 @@ def main():
 
     result = yield conn.mget(keys)
     print result
+
+    yield conn.disconnect()
 
 if __name__ == "__main__":
     main().addCallback(lambda ign: reactor.stop())

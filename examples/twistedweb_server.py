@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env twistd -ny
 # coding: utf-8
 # Copyright 2009 Alexandre Fiori
 #
@@ -15,13 +15,16 @@
 # limitations under the License.
 #
 # run:
-#  twistd -ny twistwedweb_server.tac
+#  twistd -ny twistwedweb_server.py
 
-import txredisapi
+import txredisapi as redis
+
+from twisted.application import internet
+from twisted.application import service
 from twisted.internet import defer
-from twisted.web import xmlrpc, server
+from twisted.web import server
+from twisted.web import xmlrpc
 from twisted.web.resource import Resource
-from twisted.application import service, internet
 
 class Root(Resource):
     isLeaf = False
@@ -40,7 +43,7 @@ class IndexHandler(BaseHandler, Resource):
     def _failure(self, error, request, message):
         request.write(message % str(error))
         request.finish()
-        
+
     def render_GET(self, request):
         try:
             key = request.args["key"][0]
@@ -87,9 +90,7 @@ class XmlrpcHandler(BaseHandler, xmlrpc.XMLRPC):
 
 
 # redis connection
-_db = txredisapi.lazyRedisConnectionPool()
-#_db = txredisapi.lazyRedisConnectionPool(host, port, reconnect=True, pool_size=20, db=13)
-#_db = txredisapi.lazyRedisShardingConnectionPool(["10.0.0.1:6379", "10.0.0.2:6379"])
+_db = redis.lazyConnectionPool()
 
 # http resources
 root = Root()
