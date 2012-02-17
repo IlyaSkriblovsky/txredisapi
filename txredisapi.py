@@ -1088,6 +1088,11 @@ class SubscriberProtocol(RedisProtocol):
             patterns = [patterns]
         return self.execute_command("PUNSUBSCRIBE", *patterns)
 
+class SubscriberFactory(protocol.ReconnectingClientFactory):
+    maxDelay = 120
+    continueTrying = True
+    protocol = SubscriberProtocol
+
 
 class ConnectionHandler(object):
     def __init__(self, factory):
