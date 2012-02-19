@@ -30,7 +30,7 @@ Features
 Installation
 ============
 It's a pure-python driver, in a single file. There's absolutely no need to
-install it anywhere. Just copy it ``txredisapi.py`` to your project directory.
+install it anywhere. Just copy ``txredisapi.py`` to your project directory.
 
 If you have `cyclone <http://github.com/fiorix/cyclone>`_, you already have it too::
 
