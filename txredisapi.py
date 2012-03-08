@@ -183,6 +183,20 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             bulk_buffer = self.bulk_buffer[:-2]
             self.bulk_buffer = ""
             self.bulkDataReceived(bulk_buffer)
+            while self.multi_bulk_length > 0 and rest:
+                if rest[0] == self.BULK:
+                    idx = rest.find(self.delimiter)
+                    if idx == -1:
+                        break
+                    data_len = int(rest[1:idx], 10)
+                    if len(rest) >= (idx + 5 + data_len):
+                        data_start = idx + 2
+                        data_end = data_start + data_len
+                        data = rest[data_start: data_end]
+                        rest = rest[data_end + 2:]
+                        self.bulkDataReceived(data)
+                        continue
+                break
             self.setLineMode(extra=rest)
 
     def errorReceived(self, data):
