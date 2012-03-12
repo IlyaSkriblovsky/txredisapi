@@ -1,3 +1,4 @@
 *.swp
 *.pyc
 build
+_trial_temp/
