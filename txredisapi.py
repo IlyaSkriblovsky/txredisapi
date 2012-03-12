@@ -49,6 +49,8 @@ class InvalidResponse(RedisError):
     pass
 class InvalidData(RedisError):
     pass
+class WatchError(RedisError):
+    pass
 
 def list_or_args(command, keys, args):
     oldapi = bool(args)
@@ -998,17 +1000,41 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     # That object must be used for further interactions within
     # the transaction. At the end, either exec() or discard()
     # must be executed.
-    @defer.inlineCallbacks
-    def multi(self):
-        response = yield self.execute_command("MULTI")
-        if response == "OK":
+    def multi(self, watch_keys=None):
+        if watch_keys:
+            if isinstance(watch_keys, (str, unicode)):
+                watch_keys = [watch_keys]
+            d = defer.Deferred()
+            self.execute_command("WATCH", *watch_keys).addCallback(
+                    self._watch_added, d)
+            return d
+        return self.execute_command("MULTI").addCallback(self._multi_started)
+
+    def _watch_added(self, response, d):
+        if response == 'OK':
+            self.execute_command("MULTI").addCallback(
+                    self._multi_started).chainDeferred(d)
+        else:
+            d.errback(WatchError("Invalid WATCH response: %s" % (response)))
+
+    def _multi_started(self, response):
+        if response == 'OK':
             self.inTransaction = True
-        defer.returnValue(self)
+        return self
+
+    def _commit_check(self, response):
+        if response is None:
+            self.inTransaction = False
+            self.transactions = 0
+            raise WatchError("Transaction failed")
+        else:
+            return response
 
     def commit(self):
         if self.inTransaction is False:
             raise RedisError("Not in transaction")
-        return self.execute_command("EXEC")
+        return self.execute_command("EXEC").addCallback(
+                self._commit_check)
 
     def discard(self):
         if self.inTransaction is False:
