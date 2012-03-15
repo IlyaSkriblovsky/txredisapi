@@ -58,6 +58,7 @@ class TestRedisConnections(unittest.TestCase):
         db1 = yield self._getRedisConnection()
         yield self.db.set(self._KEYS[0], 'foo')
         t = yield self.db.multi(self._KEYS[0])
+        self.assertIsInstance(t, redis.RedisProtocol)
         yield t.set(self._KEYS[1], 'bar')
         # This should trigger a failure
         yield db1.set(self._KEYS[0], 'bar1')
@@ -67,6 +68,7 @@ class TestRedisConnections(unittest.TestCase):
     def testRedisWatchSucceed(self):
         yield self.db.set(self._KEYS[0], 'foo')
         t = yield self.db.multi(self._KEYS[0])
+        self.assertIsInstance(t, redis.RedisProtocol)
         yield t.set(self._KEYS[0], 'bar')
         yield t.commit().addBoth(self._check_watcherror, shouldError=False)
 
@@ -74,5 +76,6 @@ class TestRedisConnections(unittest.TestCase):
     def testRedisMultiNoArgs(self):
         yield self.db.set(self._KEYS[0], 'foo')
         t = yield self.db.multi()
+        self.assertIsInstance(t, redis.RedisProtocol)
         yield t.set(self._KEYS[1], 'bar')
         yield t.commit().addBoth(self._check_watcherror, shouldError=False)

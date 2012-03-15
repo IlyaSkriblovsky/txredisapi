@@ -1000,26 +1000,27 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     # That object must be used for further interactions within
     # the transaction. At the end, either exec() or discard()
     # must be executed.
-    def multi(self, watch_keys=None):
-        if watch_keys:
-            if isinstance(watch_keys, (str, unicode)):
-                watch_keys = [watch_keys]
+    def multi(self, keys=None):
+        if keys:
+            if isinstance(keys, (str, unicode)):
+                keys = [keys]
             d = defer.Deferred()
-            self.execute_command("WATCH", *watch_keys).addCallback(
+            self.execute_command("WATCH", *keys).addCallback(
                     self._watch_added, d)
-            return d
-        return self.execute_command("MULTI").addCallback(self._multi_started)
+        else:
+            d = self.execute_command("MULTI").addCallback(self._multi_started)
+        self.inTransaction = True
+        return d
 
     def _watch_added(self, response, d):
-        if response == 'OK':
-            self.execute_command("MULTI").addCallback(
-                    self._multi_started).chainDeferred(d)
-        else:
-            d.errback(WatchError("Invalid WATCH response: %s" % (response)))
+        if response != 'OK':
+            d.errback(RedisError('Invalid WATCH response: %s' % response))
+        self.execute_command("MULTI").addCallback(
+                self._multi_started).chainDeferred(d)
 
     def _multi_started(self, response):
-        if response == 'OK':
-            self.inTransaction = True
+        if response != 'OK':
+            raise RedisError('Invalid MULTI response: %s' % response)
         return self
 
     def _commit_check(self, response):
