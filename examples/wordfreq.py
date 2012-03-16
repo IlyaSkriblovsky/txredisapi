@@ -7,6 +7,7 @@ import txredisapi as redis
 from twisted.internet import defer
 from twisted.internet import reactor
 
+
 def wordfreq(file):
     try:
         f = open(file, 'r')
@@ -16,14 +17,14 @@ def wordfreq(file):
         print "Exception: %s" % e
         return None
 
-    wf={}
+    wf = {}
     wlist = words.split()
     for b in wlist:
-        a=b.lower()
-        if wf.has_key(a):
-            wf[a]=wf[a]+1
+        a = b.lower()
+        if a in wf:
+            wf[a] = wf[a] + 1
         else:
-           wf[a]=1
+            wf[a] = 1
     return len(wf), wf
 
 

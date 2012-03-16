@@ -6,6 +6,7 @@ import txredisapi as redis
 from twisted.internet import defer
 from twisted.internet import reactor
 
+
 @defer.inlineCallbacks
 def main():
     # run two redis servers, one at port 6379 and another in 6380

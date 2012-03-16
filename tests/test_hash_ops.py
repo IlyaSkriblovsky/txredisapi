@@ -16,11 +16,11 @@
 import txredisapi as redis
 
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.trial import unittest
 
-redis_host="localhost"
-redis_port=6379
+redis_host = "localhost"
+redis_port = 6379
+
 
 class TestRedisHashOperations(unittest.TestCase):
     @defer.inlineCallbacks
@@ -39,7 +39,7 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
-        s = yield db.hmset("txredisapi:HMSetHMGet", t_dict)
+        yield db.hmset("txredisapi:HMSetHMGet", t_dict)
         ks = t_dict.keys()
         ks.reverse()
         vs = t_dict.values()
@@ -55,7 +55,7 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
-        s = yield db.hmset("txredisapi:HKeysHVals", t_dict)
+        yield db.hmset("txredisapi:HKeysHVals", t_dict)
 
         vs_u = [unicode(v) for v in t_dict.values()]
         ks_u = [unicode(k) for k in t_dict.keys()]
@@ -106,7 +106,7 @@ class TestRedisHashOperations(unittest.TestCase):
     def testRedisHGetAll(self):
         db = yield redis.Connection(redis_host, redis_port, reconnect=False)
 
-        d = {u"key1":u"uno", u"key2":u"dos"}
+        d = {u"key1": u"uno", u"key2": u"dos"}
         yield db.hmset("txredisapi:HGetAll", d)
         s = yield db.hgetall("txredisapi:HGetAll")
 
