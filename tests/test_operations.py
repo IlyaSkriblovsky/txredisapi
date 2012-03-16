@@ -15,11 +15,11 @@
 
 import txredisapi as redis
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.trial import unittest
 
-redis_host="localhost"
-redis_port=6379
+redis_host = "localhost"
+redis_port = 6379
+
 
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
@@ -27,12 +27,13 @@ class TestRedisConnections(unittest.TestCase):
         db = yield redis.Connection(redis_host, redis_port, reconnect=False)
 
         # test set() operation
-        for key, value in (("txredisapi:test1", "foo"), ("txredisapi:test2", "bar")):
+        kvpairs = (("txredisapi:test1", "foo"), ("txredisapi:test2", "bar"))
+        for key, value in kvpairs:
             yield db.set(key, value)
             result = yield db.get(key)
             self.assertEqual(result, value)
 
-        d = {"txredisapi:a":1, "txredisapi:b":2}
+        d = {"txredisapi:a": 1, "txredisapi:b": 2}
         yield db.mset(d)
         values = yield db.mget(d.keys())
         self.assertEqual(values, d.values())

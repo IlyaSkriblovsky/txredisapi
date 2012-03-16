@@ -17,12 +17,12 @@ import txredisapi as redis
 
 from twisted.internet import base
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.trial import unittest
 
 base.DelayedCall.debug = False
-redis_host="localhost"
-redis_port=6379
+redis_host = "localhost"
+redis_port = 6379
+
 
 class TestConnectionMethods(unittest.TestCase):
     @defer.inlineCallbacks
@@ -33,13 +33,15 @@ class TestConnectionMethods(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_ConnectionDB1(self):
-        db = yield redis.Connection(redis_host, redis_port, dbid=1, reconnect=False)
+        db = yield redis.Connection(redis_host, redis_port, dbid=1,
+                reconnect=False)
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_ConnectionPool(self):
-        db = yield redis.ConnectionPool(redis_host, redis_port, poolsize=2, reconnect=False)
+        db = yield redis.ConnectionPool(redis_host, redis_port, poolsize=2,
+                reconnect=False)
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
 

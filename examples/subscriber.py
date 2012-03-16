@@ -25,7 +25,6 @@ import txredisapi as redis
 
 from twisted.application import internet
 from twisted.application import service
-from twisted.internet import reactor
 
 
 class myProtocol(redis.SubscriberProtocol):

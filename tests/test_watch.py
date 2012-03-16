@@ -18,8 +18,8 @@ from twisted.internet import defer
 from twisted.python.failure import Failure
 from twisted.trial import unittest
 
-redis_host="localhost"
-redis_port=6379
+redis_host = "localhost"
+redis_port = 6379
 
 
 class TestRedisConnections(unittest.TestCase):
