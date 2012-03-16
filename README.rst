@@ -25,6 +25,7 @@ Features
 - Automatic Reconnection
 - Publish/Subscribe (PubSub)
 - Transactions
+- (new) Unix socket client support
 
 
 Installation
@@ -94,15 +95,29 @@ These are all the supported methods for connecting to Redis::
 	ShardedConnectionPool(hosts, dbid, poolsize, reconnect)
 	lazyShardedConnectionPool(hosts, dbid, poolsize, reconnect)
 
+	UnixConnection(path, dbid, reconnect)
+	lazyUnixConnection(path, dbid, reconnect)
+
+	UnixConnectionPool(unix, dbid, poolsize, reconnect)
+	lazyUnixConnectionPool(unix, dbid, poolsize, reconnect)
+
+	ShardedUnixConnection(paths, dbid, reconnect)
+	lazyShardedUnixConnection(paths, dbid, reconnect)
+
+	ShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
+	lazyShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
+
 
 The arguments are:
 
 - host: the IP address or hostname of the redis server. [default: localhost]
 - port: port number of the redis server. [default: 6379]
+- path: path of redis server's socket [default: /tmp/redis.sock]
 - dbid: database id of redis server. [default: 0]
 - poolsize: how many connections to make. [default: 10]
 - reconnect: auto-reconnect if connection is lost. [default: True]
 - hosts (for sharded): list of ``host:port`` pairs. [default: None]
+- paths (for sharded): list of ``pathnames``. [default: None]
 
 Connection Handlers
 -------------------
