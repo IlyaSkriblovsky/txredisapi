@@ -26,14 +26,18 @@ from twisted.web import server
 from twisted.web import xmlrpc
 from twisted.web.resource import Resource
 
+
 class Root(Resource):
     isLeaf = False
 
+
 class BaseHandler(object):
     isLeaf = True
+
     def __init__(self, db):
         self.db = db
         Resource.__init__(self)
+
 
 class IndexHandler(BaseHandler, Resource):
     def _success(self, value, request, message):

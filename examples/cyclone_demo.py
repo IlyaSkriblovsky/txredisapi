@@ -18,7 +18,6 @@
 
 import collections
 import functools
-import os.path
 import sys
 
 import cyclone.web
@@ -62,7 +61,7 @@ class RedisMixin(object):
 
     def subscribe(self, channel):
         if RedisMixin.psconn is None:
-            raise cyclone.web.HTTPError(503) # Service Unavailable
+            raise cyclone.web.HTTPError(503)  # Service Unavailable
 
         if channel not in RedisMixin.channels:
             log.msg("Subscribing entire server to %s" % channel)
@@ -125,7 +124,8 @@ class TextHandler(cyclone.web.RequestHandler, RedisMixin):
         try:
             yield self.dbconn.set(key, value)
         except Exception, e:
-            log.err("Redis failed to set('%s', '%s'): %s" % (key, value, str(e)))
+            r = (key, value, str(e))
+            log.err("Redis failed to set('%s', '%s'): %s" % r)
             raise cyclone.web.HTTPError(503)
 
         self.set_header("Content-Type", "text/plain")

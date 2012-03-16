@@ -14,11 +14,12 @@
 # limitations under the License.
 
 import txredisapi as redis
-from twisted.internet import defer, reactor
+from twisted.internet import defer
 from twisted.trial import unittest
 
-redis_host="localhost"
-redis_port=6379
+redis_host = "localhost"
+redis_port = 6379
+
 
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
