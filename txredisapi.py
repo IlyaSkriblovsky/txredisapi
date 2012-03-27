@@ -671,18 +671,25 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("RPOPLPUSH", srckey, dstkey)
 
+    def _make_set(self, result):
+        if isinstance(result, list):
+            return set(result)
+        return result
+
     # Commands operating on sets
-    def sadd(self, key, member):
+    def sadd(self, key, members, *args):
         """
         Add the specified member to the Set value at key
         """
-        return self.execute_command("SADD", key, member)
+        members = list_or_args("sadd", members, args)
+        return self.execute_command("SADD", key, *members)
 
-    def srem(self, key, member):
+    def srem(self, key, members, *args):
         """
         Remove the specified member from the Set value at key
         """
-        return self.execute_command("SREM", key, member)
+        members = list_or_args("srem", members, args)
+        return self.execute_command("SREM", key, *members)
 
     def spop(self, key):
         """
@@ -694,7 +701,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Move the specified member from one Set to another atomically
         """
-        return self.execute_command("SMOVE", srckey, dstkey, member)
+        return self.execute_command(
+                "SMOVE", srckey, dstkey, member).addCallback(bool)
 
     def scard(self, key):
         """
@@ -706,14 +714,15 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Test if the specified value is a member of the Set at key
         """
-        return self.execute_command("SISMEMBER", key, value)
+        return self.execute_command("SISMEMBER", key, value).addCallback(bool)
 
     def sinter(self, keys, *args):
         """
         Return the intersection between the Sets stored at key1, ..., keyN
         """
         keys = list_or_args("sinter", keys, args)
-        return self.execute_command("SINTER", *keys)
+        return self.execute_command("SINTER", *keys).addCallback(
+                self._make_set)
 
     def sinterstore(self, dstkey, keys, *args):
         """
@@ -728,7 +737,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Return the union between the Sets stored at key1, key2, ..., keyN
         """
         keys = list_or_args("sunion", keys, args)
-        return self.execute_command("SUNION", *keys)
+        return self.execute_command("SUNION", *keys).addCallback(
+                self._make_set)
 
     def sunionstore(self, dstkey, keys, *args):
         """
@@ -744,7 +754,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         all the Sets key2, ..., keyN
         """
         keys = list_or_args("sdiff", keys, args)
-        return self.execute_command("SDIFF", *keys)
+        return self.execute_command("SDIFF", *keys).addCallback(
+                self._make_set)
 
     def sdiffstore(self, dstkey, keys, *args):
         """
@@ -758,7 +769,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Return all the members of the Set value at key
         """
-        return self.execute_command("SMEMBERS", key)
+        return self.execute_command("SMEMBERS", key).addCallback(
+                self._make_set)
 
     def srandmember(self, key):
         """
