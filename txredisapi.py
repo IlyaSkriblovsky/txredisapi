@@ -323,6 +323,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             except UnicodeEncodeError, e:
                 raise InvalidData(
                 "Error encoding unicode value '%s': %s" % (repr(s), e))
+        if isinstance(s, float):
+            return format(s, "f")
         return str(s)
 
     def execute_command(self, *args):
@@ -779,18 +781,29 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         return self.execute_command("SRANDMEMBER", key)
 
     # Commands operating on sorted zsets (sorted sets)
-    def zadd(self, key, score, member):
+    def zadd(self, key, score, member, *args):
         """
         Add the specified member to the Sorted Set value at key
         or update the score if it already exist
         """
-        return self.execute_command("ZADD", key, score, member)
+        if args:
+            # Args should be pairs (have even number of elements)
+            if len(args) % 2:
+                return defer.fail(InvalidData(
+                    "Invalid number of arguments to ZADD"))
+            else:
+                l = [score, member]
+                l.extend(args)
+                args = l
+        else:
+            args = [score, member]
+        return self.execute_command("ZADD", key, *args)
 
-    def zrem(self, key, member):
+    def zrem(self, key, *args):
         """
         Remove the specified member from the Sorted Set value at key
         """
-        return self.execute_command("ZREM", key, member)
+        return self.execute_command("ZREM", key, *args)
 
     def zincr(self, key, member):
         return self.zincrby(key, 1, member)
@@ -819,33 +832,85 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("ZREVRANK", key, member)
 
-    def zrange(self, key, start, end):
+    def _handle_withscores(self, r):
+        if isinstance(r, list):
+            # Return a list tuples of form (value, score)
+            return zip(r[::2], r[1::2])
+        return r
+
+    def _zrange(self, key, start, end, withscores, reverse):
+        if reverse:
+            cmd = "ZREVRANGE"
+        else:
+            cmd = "ZRANGE"
+        if withscores:
+            pieces = (cmd, key, start, end, "WITHSCORES")
+        else:
+            pieces = (cmd, key, start, end)
+        r = self.execute_command(*pieces)
+        if withscores:
+            r.addCallback(self._handle_withscores)
+        return r
+
+    def zrange(self, key, start=0, end=-1, withscores=False):
         """
         Return a range of elements from the sorted set at key
-
         """
-        return self.execute_command("ZRANGE", key, start, end)
+        return self._zrange(key, start, end, withscores, False)
 
-    def zrevrange(self, key, start, end):
+    def zrevrange(self, key, start=0, end=-1, withscores=False):
         """
         Return a range of elements from the sorted set at key,
         exactly like ZRANGE, but the sorted set is ordered in
         traversed in reverse order, from the greatest to the smallest score
         """
-        return self.execute_command("ZREVRANGE", key, start, end)
+        return self._zrange(key, start, end, withscores, True)
 
-    def zrangebyscore(self, key, min, max):
+    def _zrangebyscore(self, key, min, max, withscores, offset,
+            count, reverse):
+        if reverse:
+            cmd = "ZREVRANGEBYSCORE"
+        else:
+            cmd = "ZRANGEBYSCORE"
+        if (offset is None) != (count is None):  # XNOR
+            return defer.fail(InvalidData(
+                "Invalid count and offset arguments to %s" % cmd))
+        if withscores:
+            pieces = [cmd, key, min, max, "WITHSCORES"]
+        else:
+            pieces = [cmd, key, min, max]
+        if offset and count:
+            pieces.extend(("LIMIT", offset, count))
+        r = self.execute_command(*pieces)
+        if withscores:
+            r.addCallback(self._handle_withscores)
+        return r
+
+    def zrangebyscore(self, key, min='-inf', max='+inf', withscores=False,
+            offset=None, count=None):
         """
         Return all the elements with score >= min and score <= max
         (a range query) from the sorted set
         """
-        return self.execute_command("ZRANGEBYSCORE", key, min, max)
+        return self._zrangebyscore(key, min, max, withscores, offset,
+                count, False)
 
-    def zcount(self, key, min, max):
+    def zrevrangebyscore(self, key, max='+inf', min='-inf', withscores=False,
+            offset=None, count=None):
+        """
+        ZRANGEBYSCORE in reverse order
+        """
+        # ZREVRANGEBYSCORE takes max before min
+        return self._zrangebyscore(key, max, min, withscores, offset,
+                count, True)
+
+    def zcount(self, key, min='-inf', max='+inf'):
         """
         Return the number of elements with score >= min and score <= max
         in the sorted set
         """
+        if min == '-inf' and max == '+inf':
+            return self.zcard(key)
         return self.execute_command("ZCOUNT", key, min, max)
 
     def zcard(self, key):
@@ -861,14 +926,14 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("ZSCORE", key, element)
 
-    def zremrangebyrank(self, key, min, max):
+    def zremrangebyrank(self, key, min=0, max=-1):
         """
         Remove all the elements with rank >= min and rank <= max from
         the sorted set
         """
         return self.execute_command("ZREMRANGEBYRANK", key, min, max)
 
-    def zremrangebyscore(self, key, min, max):
+    def zremrangebyscore(self, key, min='-inf', max='+inf'):
         """
         Remove all the elements with score >= min and score <= max from
         the sorted set
@@ -892,9 +957,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     def _zaggregate(self, command, dstkey, keys, aggregate):
         pieces = [command, dstkey, len(keys)]
         if isinstance(keys, dict):
-            items = keys.items()
-            keys = [i[0] for i in items]
-            weights = [i[1] for i in items]
+            keys, weights = zip(*keys.items())
         else:
             weights = None
 
@@ -902,10 +965,25 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         if weights:
             pieces.append("WEIGHTS")
             pieces.extend(weights)
-        if aggregate:
-            pieces.append("AGGREGATE")
-            pieces.append(aggregate)
 
+        if aggregate:
+            if aggregate is min:
+                aggregate = 'MIN'
+            elif aggregate is max:
+                aggregate = 'MAX'
+            elif aggregate is sum:
+                aggregate = 'SUM'
+            else:
+                err_flag = True
+                if isinstance(aggregate, (str, unicode)):
+                    aggregate_u = aggregate.upper()
+                    if aggregate_u in ('MIN', 'MAX', 'SUM'):
+                        aggregate = aggregate_u
+                        err_flag = False
+                if err_flag:
+                    return defer.fail(InvalidData(
+                        "Invalid aggregate function: %s" % aggregate))
+            pieces.extend(("AGGREGATE", aggregate))
         return self.execute_command(*pieces)
 
     # Commands operating on hashes
@@ -1214,7 +1292,7 @@ class UnixConnectionHandler(ConnectionHandler):
                    (cli.name, self._factory.size)
 
 
-ShardedMethods = [
+ShardedMethods = frozenset([
     "decr",
     "delete",
     "exists",
@@ -1254,16 +1332,23 @@ ShardedMethods = [
     "ttl",
     "zadd",
     "zcard",
+    "zcount",
+    "zdecr",
     "zincr",
+    "zincrby",
     "zrange",
     "zrangebyscore",
+    "zrevrangebyscore",
+    "zrevrank",
+    "zrank",
     "zrem",
     "zremrangebyscore",
+    "zremrangebyrank",
     "zrevrange",
     "zscore",
-]
+])
 
-_findhash = re.compile('.+\{(.*)\}.*', re.I)
+_findhash = re.compile(r'.+\{(.*)\}.*')
 
 
 class HashRing(object):
