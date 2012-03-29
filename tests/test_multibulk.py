@@ -43,9 +43,9 @@ class LargeMultiBulk(unittest.TestCase):
         self.assertEqual(set(res), data)
 
     def test_large_multibulk_int(self):
-        data = set(range(10000))
+        data = set(range(1000))
         return self._test_multibulk(data)
 
     def test_large_multibulk_str(self):
-        data = set([os.urandom(10).encode('base64') for x in range(1000)])
+        data = set([os.urandom(10).encode('base64') for x in range(100)])
         return self._test_multibulk(data)
