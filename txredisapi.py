@@ -323,6 +323,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             except UnicodeEncodeError, e:
                 raise InvalidData(
                 "Error encoding unicode value '%s': %s" % (repr(s), e))
+        if isinstance(s, float):
+            return format(s, "f")
         return str(s)
 
     def execute_command(self, *args):
