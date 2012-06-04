@@ -205,7 +205,11 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                     if idx == -1:
                         break
                     data_len = int(rest[1:idx], 10)
-                    if len(rest) >= (idx + 5 + data_len):
+                    if data_len == -1:
+                        rest = rest[5:]
+                        self.bulkDataReceived(None)
+                        continue
+                    elif len(rest) >= (idx + 5 + data_len):
                         data_start = idx + 2
                         data_end = data_start + data_len
                         data = rest[data_start: data_end]

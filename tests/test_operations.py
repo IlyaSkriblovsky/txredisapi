@@ -38,4 +38,8 @@ class TestRedisConnections(unittest.TestCase):
         values = yield db.mget(d.keys())
         self.assertEqual(values, d.values())
 
+        keys = ['txredisapi:a', 'txredisapi:notset', 'txredisapi:b']
+        values = yield db.mget(keys)
+        self.assertEqual(values, [1, None, 2])
+
         yield db.disconnect()
