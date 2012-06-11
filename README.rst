@@ -127,7 +127,7 @@ Normal connections (not lazy) return a deferred, which is fired with the
 connection handler after the connection is established.
 
 In case of connection pools, it will only fire the callback after all connections
-are made.
+are ready.
 
 The connection handler is the client interface with Redis. It accepts all the
 commands such as ``get``, ``set``, etc. It's the ``rc`` object in the
