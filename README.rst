@@ -446,6 +446,37 @@ Calling ``commit`` will cause it to return a list with the return of all
 commands executed in the transaction. ``discard``, on the other hand,
 will normally return just an ``OK``.
 
+Authentication
+--------------
+This is how to authenticate::
+
+	#!/usr/bin/env python
+
+	import txredisapi
+	from twisted.internet import defer
+	from twisted.internet import reactor
+
+
+	@defer.inlineCallbacks
+	def main():
+	    redis = yield txredisapi.Connection()
+	    yield redis.auth("foobared")
+	    yield redis.set("foo", "bar")
+	    print (yield redis.get("foo"))
+	    reactor.stop()
+
+	if __name__ == "__main__":
+	    main()
+	    reactor.run()
+
+If the password does not match, most of the commands will return nothing,
+except for ``get``, which returns ``operation not permitted``.
+
+There's one caveat: whenever authentication is required, the database id must
+be manually selected after the ``auth`` command. The ``dbid=N`` argument of
+``Connection()`` must not be defined, or set to ``None``; otherwise, it'll try
+to select the dbid before authentication, and it'll fail.
+
 
 Credits
 =======
