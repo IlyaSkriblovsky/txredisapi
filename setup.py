@@ -15,6 +15,15 @@
 # limitations under the License.
 
 import setuptools
+import sys
+
+python_version = sys.version_info[:2]
+if python_version == (2, 5):
+    requires = ["twisted==11.0.0", "zope.interface<4.0"]
+elif python_version == (2, 6):
+    requires = ["twisted==11.0.0"]
+else:
+    requires = ["twisted"]
 
 setuptools.setup(
     name="txredisapi",

@@ -1,58 +1,84 @@
+txredisapi
 ==========
-TxRedisAPI
-==========
-:Info: See `the redis site <http://code.google.com/p/redis/>`_ for more information. See `github <http://github.com/fiorix/txredis/tree>`_ for the latest source.
-:Author: Alexandre Fiori <fiorix@gmail.com>
+
+*For the latest source code, see <http://github.com/fiorix/txredisapi>.*
 
 
-About
-=====
-An asynchronous Python client for the Redis database, based on Twisted.
+``txredisapi`` is a non-blocking client driver for the [redis](http://redis.io)
+database, written in Python. It uses [Twisted](http://twistedmatrix.com) for
+the asynchronous communication with redis.
 
-The ``txredisapi`` package is an improvement of the original `redis protocol
-for twisted <http://pypi.python.org/pypi/txredis/>`_, written by Dorian Raymer and Ludovico Magnocavallo.
+It started as a fork of the original
+[redis protocol for twisted](http://pypi.python.org/pypi/txredis/), and evolved
+into a more robust, reliable, and complete solution for applications like web
+servers. These types of applications often need a fault-tolerant pool of
+connections with multiple redis servers, making it possible to easily develop
+and maintain distributed systems.
 
-For more information, see the `Redis Command Reference <http://code.google.com/p/redis/wiki/CommandReference>`_.
+Most of the [redis commands](http://redis.io/commands) are supported, as well
+as other features such as silent reconnection, connection pools, and automatic
+sharding.
 
-NEWS: ``txredisapi`` is now part of `cyclone <http://github.com/fiorix/cyclone>`_. But don't worry, I'll also keep this stand alone version up to date.
+This driver is distributed as part of the [cyclone](http://cyclone.io) web
+framework.
 
+### Features ###
 
-Features
-========
 - Connection Pools
 - Lazy Connections
 - Automatic Sharding
 - Automatic Reconnection
 - Publish/Subscribe (PubSub)
 - Transactions
-- (new) Unix socket client support
+- Unix Socket Connections
 
 
-Installation
-============
-It's a pure-python driver, in a single file. There's absolutely no need to
-install it anywhere. Just copy ``txredisapi.py`` to your project directory.
+Install
+-------
 
-If you have `cyclone <http://github.com/fiorix/cyclone>`_, you already have it too::
+Bear in mind that ``txredisapi.py`` is pure-python, in a single file.
+Thus, there's absolutely no need to install it. Instead, just copy it to your
+project directory and start using.
 
-	import cyclone.redis
+Latest source code is at <https://github.com/fiorix/txredisapi>.
+
+If you have [cyclone](http://cyclone.io), you probably already have it too.
+Try the following:
+
+    $ python
+    >>> import cyclone.redis
+    >>> cyclone.redis.version
+    '0.4'
+
+However, if you really really insist in installing, get it from pypi:
+
+    pip install txredisapi
 
 
-`TwistedTrial <http://twistedmatrix.com/trac/wiki/TwistedTrial>`_ unit tests
-are available. Just run **trial tests** in the root directory (make sure redis is running!)
+### Unit Tests ###
+
+[Twisted Trial](http://twistedmatrix.com/trac/wiki/TwistedTrial) unit tests
+are available. Just start redis, and run ``trial ./tests``.
+If *unix sockets* are disabled in redis, it will silently skip those tests.
+
+There are live test results at <https://secure.travis-ci.org/fiorix/txredisapi>.
+
+![Build Status](https://secure.travis-ci.org/fiorix/txredisapi.png)
 
 
 Usage
-=====
-First thing to do is choose what type of connection you want. The driver supports
-single connection, connection pools, sharded connections (with automatic distribution
-based on a built-in consistent hashing algorithm), sharded connection pools, and
-all of these different types can be ``lazy``, explained later (because I'm lazy now).
+-----
+
+First thing to do is choose what type of connection you want. The driver
+supports single connection, connection pools, sharded connections (with
+automatic distribution based on a built-in consistent hashing algorithm),
+sharded connection pools, and all of these different types can be *lazy*,
+which is explained later (because I'm lazy now).
 
 Basically, you want normal connections for simple batch clients that connect
 to redis, execute a couple of commands and disconnect - like crawlers, etc.
 
-Example::
+Example:
 
 	#!/usr/bin/env python
 	# coding: utf-8
@@ -62,6 +88,7 @@ Example::
 	from twisted.internet import defer
 	from twisted.internet import reactor
 
+
 	@defer.inlineCallbacks
 	def main():
 	    rc = yield redis.Connection()
@@ -69,17 +96,18 @@ Example::
 
 	    yield rc.set("foo", "bar")
 	    v = yield rc.get("foo")
-	    print "foo:", v
+	    print "foo:", repr(v)
 
 	    yield rc.disconnect()
+
 
 	if __name__ == "__main__":
 	    main().addCallback(lambda ign: reactor.stop())
 	    reactor.run()
 
 
-Easily switch between ``redis.Connection()`` and ``redis.ConnectionPool()`` with
-absolutely no changes to the logic of your program.
+Easily switch between ``redis.Connection()`` and ``redis.ConnectionPool()``
+with absolutely no changes to the logic of your program.
 
 These are all the supported methods for connecting to Redis::
 
@@ -119,29 +147,30 @@ The arguments are:
 - hosts (for sharded): list of ``host:port`` pairs. [default: None]
 - paths (for sharded): list of ``pathnames``. [default: None]
 
-Connection Handlers
--------------------
+
+### Connection Handlers ###
+
 All connection methods return a connection handler object at some point.
 
 Normal connections (not lazy) return a deferred, which is fired with the
 connection handler after the connection is established.
 
-In case of connection pools, it will only fire the callback after all connections
-are ready.
+In case of connection pools, it will only fire the callback after all
+connections are set up, and ready.
 
-The connection handler is the client interface with Redis. It accepts all the
-commands such as ``get``, ``set``, etc. It's the ``rc`` object in the
-example below.
+Connection handler is the client interface with redis. It accepts all the
+commands supported by redis, such as ``get``, ``set``, etc. It is the ``rc``
+object in the example below.
 
 Connection handlers will automatically select one of the available connections
-in connection pools, and automatically reconnect to Redis when necessary.
+in connection pools, and automatically reconnect to redis when necessary.
 
-If the connection with Redis is lost, all commands raise the ``ConnectionError``
-exception to indicate that there's no active connection. However, if the
-``reconnect`` argument was set to ``True`` during the initialization, it
-will continuosly try to reconnect, in background.
+If the connection with redis is lost, all commands will raise the
+``ConnectionError`` exception, to indicate that there's no active connection.
+However, if the ``reconnect`` argument was set to ``True`` during the
+initialization, it will continuosly try to reconnect, in background.
 
-Example::
+Example:
 
 	#!/usr/bin/env python
 	# coding: utf-8
@@ -151,10 +180,12 @@ Example::
 	from twisted.internet import defer
 	from twisted.internet import reactor
 
+
 	def sleep(n):
 	    d = defer.Deferred()
 	    reactor.callLater(5, lambda *ign: d.callback(None))
 	    return d
+
 
 	@defer.inlineCallbacks
 	def main():
@@ -176,13 +207,14 @@ Example::
 	    except redis.ConnectionError, e:
 		print str(e)
 
+
 	if __name__ == "__main__":
 	    main().addCallback(lambda ign: reactor.stop())
 	    reactor.run()
 
 
-Lazy Connections
-----------------
+### Lazy Connections ###
+
 This type of connection will immediately return the connection handler object,
 even before the connection is made.
 
@@ -190,24 +222,24 @@ It will start the connection, (or connections, in case of connection pools) in
 background, and automatically reconnect if necessary.
 
 You want lazy connections when you're writing servers, like web servers, or
-any other type of server that shouldn't wait for the redis connection during
+any other type of server that should not wait for the redis connection during
 the initialization of the program.
 
-The example below is a web application based on `cyclone <http://github.com/fiorix/cyclone>`_,
-which will expose Redis' set, get and delete commands over HTTP.
+The example below is a web application, which will expose redis set, get and
+delete commands over HTTP.
 
-If database connection is down (either because Redis is not running, or whatever
-reason), the web application will start normally. If connection is lost during
-the operation, nothing will change.
+If the database connection is down (either because redis is not running, or
+whatever reason), the web application will start normally. If connection is
+lost during the operation, nothing will change.
 
-When there's no connection, all commands will fail therefore the web application
-will respond with HTTP 503 (Service Unavailable). It will resume to normal once
-the connection is re-established.
+When there's no connection, all commands will fail, therefore the web
+application will respond with HTTP 503 (Service Unavailable). It will resume to
+normal once the connection with redis is re-established.
 
-Try killing the Redis server after the application is running, and make a couple
-of requests. Then, start Redis again and give it another try.
+Try killing redis server after the application is running, and make a couple
+of requests. Then, start redis again and give it another try.
 
-Example::
+Example:
 
 	#!/usr/bin/env python
 	# coding: utf-8
@@ -220,11 +252,10 @@ Example::
 	from twisted.internet import reactor
 	from twisted.python import log
 
+
 	class Application(cyclone.web.Application):
 	    def __init__(self):
-		handlers = [
-		    (r"/text/(.+)", TextHandler),
-		]
+		handlers = [ (r"/text/(.+)", TextHandler) ]
 
 		RedisMixin.setup()
 		cyclone.web.Application.__init__(self, handlers, debug=True)
@@ -235,7 +266,7 @@ Example::
 
 	    @classmethod
 	    def setup(self):
-		RedisMixin.redis_conn = cyclone.redis.lazyConnectionPool()
+            RedisMixin.redis_conn = cyclone.redis.lazyConnectionPool()
 
 
 	# Provide GET, SET and DELETE redis operations via HTTP
@@ -253,32 +284,33 @@ Example::
 
 	    @defer.inlineCallbacks
 	    def post(self, key):
-		value = self.get_argument("value")
-		try:
-		    yield self.redis_conn.set(key, value)
-		except Exception, e:
-		    log.msg("Redis failed to set('%s', '%s'): %s" % (key, value, str(e)))
-		    raise cyclone.web.HTTPError(503)
+            value = self.get_argument("value")
+            try:
+                yield self.redis_conn.set(key, value)
+            except Exception, e:
+                log.msg("Redis failed to set('%s', '%s'): %s" % (key, value, str(e)))
+                raise cyclone.web.HTTPError(503)
 
-		self.set_header("Content-Type", "text/plain")
-		self.write("%s=%s\r\n" % (key, value))
+            self.set_header("Content-Type", "text/plain")
+            self.write("%s=%s\r\n" % (key, value))
 
 	    @defer.inlineCallbacks
 	    def delete(self, key):
-		try:
-		    n = yield self.redis_conn.delete(key)
-		except Exception, e:
-		    log.msg("Redis failed to del('%s'): %s" % (key, str(e)))
-		    raise cyclone.web.HTTPError(503)
+            try:
+                n = yield self.redis_conn.delete(key)
+            except Exception, e:
+                log.msg("Redis failed to del('%s'): %s" % (key, str(e)))
+                raise cyclone.web.HTTPError(503)
 
-		self.set_header("Content-Type", "text/plain")
-		self.write("DEL %s=%d\r\n" % (key, n))
+            self.set_header("Content-Type", "text/plain")
+            self.write("DEL %s=%d\r\n" % (key, n))
 
 
 	def main():
 	    log.startLogging(sys.stdout)
 	    reactor.listenTCP(8888, Application(), interface="127.0.0.1")
 	    reactor.run()
+
 
 	if __name__ == "__main__":
 	    main()
@@ -301,7 +333,7 @@ This is the server running in one terminal::
 
 And these are the requests, from ``curl`` in another terminal.
 
-Set::
+Set:
 
 	$ curl -D - -d "value=bar" http://localhost:8888/text/foo
 	HTTP/1.1 200 OK
@@ -310,7 +342,7 @@ Set::
 
 	foo=bar
 
-Get::
+Get:
 
 	$ curl -D - http://localhost:8888/text/foo
 	HTTP/1.1 200 OK
@@ -320,7 +352,7 @@ Get::
 
 	foo=bar
 
-Delete::
+Delete:
 
 	$ curl -D - -X DELETE http://localhost:8888/text/foo
 	HTTP/1.1 200 OK
@@ -329,7 +361,7 @@ Delete::
 
 	DEL foo=1
 
-After I killed Redis::
+When redis is not running:
 
 	$ curl -D - http://localhost:8888/text/foo
 	HTTP/1.1 503 Service Unavailable
@@ -340,15 +372,15 @@ After I killed Redis::
 	<body>503: Service Unavailable</body></html>
 
 
-Sharded Connections
--------------------
+### Sharded Connections ###
+
 They can be normal, or lazy connections. They can be sharded connection pools.
 Not all commands are supported on sharded connections.
 
 If the command you're trying to run is not supported on sharded connections,
 the connection handler will raise the ``NotImplementedError`` exception.
 
-Simple example with automatic sharding of keys between two Redis servers::
+Simple example with automatic sharding of keys between two redis servers:
 
 	#!/usr/bin/env python
 	# coding: utf-8
@@ -357,6 +389,7 @@ Simple example with automatic sharding of keys between two Redis servers::
 
 	from twisted.internet import defer
 	from twisted.internet import reactor
+
 
 	@defer.inlineCallbacks
 	def main():
@@ -377,25 +410,27 @@ Simple example with automatic sharding of keys between two Redis servers::
 
 	    yield rc.disconnect()
 
+
 	if __name__ == "__main__":
 	    main().addCallback(lambda ign: reactor.stop())
 	    reactor.run()
 
 
-Transactions
-------------
+### Transactions ###
+
 For obvious reasons, transactions are NOT supported on sharded connections.
 But they work pretty good on normal or lazy connections, and connection pools.
 
-NOTE: Redis uses the following methods for transactions:
+NOTE: redis uses the following methods for transactions:
 
 - MULTI: start the transaction
 - EXEC: commit the transaction
 - DISCARD: you got it.
 
-Because ``exec`` is a reserved word in Python, the command to commit is ``commit``.
+Because ``exec`` is a reserved word in Python, the command to commit is
+``commit``.
 
-Example::
+Example:
 
 	#!/usr/bin/env python
 	# coding: utf-8
@@ -404,6 +439,7 @@ Example::
 
 	from twisted.internet import defer
 	from twisted.internet import reactor
+
 
 	@defer.inlineCallbacks
 	def main():
@@ -437,17 +473,19 @@ Example::
 
 	    yield rc.disconnect()
 
+
 	if __name__ == "__main__":
 	    main().addCallback(lambda ign: reactor.stop())
 	    reactor.run()
 
 
 Calling ``commit`` will cause it to return a list with the return of all
-commands executed in the transaction. ``discard``, on the other hand,
-will normally return just an ``OK``.
+commands executed in the transaction. ``discard``, on the other hand, will
+normally return just an ``OK``.
 
-Authentication
---------------
+
+### Authentication ###
+
 This is how to authenticate::
 
 	#!/usr/bin/env python
@@ -472,10 +510,10 @@ This is how to authenticate::
 If the password does not match, most of the commands will return nothing,
 except for ``get``, which returns ``operation not permitted``.
 
-There's one caveat: whenever authentication is required, the database id must
+There's one caveat: whenever authentication is required, the *database id* must
 be manually selected after the ``auth`` command. The ``dbid=N`` argument of
 ``Connection()`` must not be defined, or set to ``None``; otherwise, it'll try
-to select the dbid before authentication, and it'll fail.
+to select *dbid* before authentication, and it will fail.
 
 
 Credits
@@ -484,13 +522,13 @@ Thanks to (in no particular order):
 
 - Gleicon Moraes
 
-  - Bugfixes, testing, and using it as the core of `RestMQ <http://github.com/gleicon/restmq>`_.
+  - Bug fixes, testing, and [RestMQ](http://github.com/gleicon/restmq>).
   - For writing the Consistent Hashing algorithm used for sharding.
 
 - Dorian Raymer and Ludovico Magnocavallo
 
-  - The authors of the original `redis protocol for twisted <http://pypi.python.org/pypi/txredis/>`_.
+  - Authors of the original *redis protocol for twisted*.
 
 - Vanderson Mota
 
-  - Patching setup.py, and PyPi maintenance
+  - Initial pypi setup, and patches
