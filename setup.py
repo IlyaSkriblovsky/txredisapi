@@ -18,12 +18,12 @@ import setuptools
 
 setuptools.setup(
     name="txredisapi",
-    version="0.4",
+    version="0.5",
     py_modules=["txredisapi"],
-    #install_requires=["twisted"],
+    install_requires=["twisted"],
     author="Alexandre Fiori",
     author_email="fiorix@gmail.com",
     url="http://github.com/fiorix/txredisapi",
     license="http://www.apache.org/licenses/LICENSE-2.0",
-    description="twisted client protocol for redis",
+    description="non-blocking redis client for python",
 )

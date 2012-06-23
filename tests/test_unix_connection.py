@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import txredisapi as redis
 
 from twisted.internet import base
@@ -22,8 +24,13 @@ from twisted.trial import unittest
 base.DelayedCall.debug = False
 redis_sock = "/tmp/redis.sock"
 
+if os.path.exists(redis_sock):
+    UT = unittest.TestCase
+else:
+    UT = object
 
-class TestUnixConnectionMethods(unittest.TestCase):
+
+class TestUnixConnectionMethods(UT):
     @defer.inlineCallbacks
     def test_UnixConnection(self):
         db = yield redis.UnixConnection(redis_sock, reconnect=False)

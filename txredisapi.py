@@ -1712,5 +1712,5 @@ __all__ = [
     ShardedUnixConnectionPool, lazyShardedUnixConnectionPool,
 ]
 
-__version__ = version = "0.4"
 __author__ = "Alexandre Fiori"
+__version__ = version = "0.5"
