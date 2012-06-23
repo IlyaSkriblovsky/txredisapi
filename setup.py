@@ -15,21 +15,12 @@
 # limitations under the License.
 
 import setuptools
-import sys
-
-python_version = sys.version_info[:2]
-if python_version == (2, 5):
-    requires = ["twisted==11.0.0", "zope.interface<4.0"]
-elif python_version == (2, 6):
-    requires = ["twisted==11.0.0"]
-else:
-    requires = ["twisted"]
 
 setuptools.setup(
     name="txredisapi",
     version="0.5",
     py_modules=["txredisapi"],
-    install_requires=requires,
+    install_requires=["twisted"],
     author="Alexandre Fiori",
     author_email="fiorix@gmail.com",
     url="http://github.com/fiorix/txredisapi",
