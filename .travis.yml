@@ -8,7 +8,7 @@ notifications:
     irc:
         - "irc.freenode.org#cycloneweb"
 install:
-    - if [[ $TRAVIS_PYTHON_VERSION == "pypy" ]]; then sudo apt-get install pypy-dev; fi
+    - if [[ $TRAVIS_PYTHON_VERSION == "pypy" ]]; then sudo apt-get install pypy-dev python-dev; fi
     - if [[ $TRAVIS_PYTHON_VERSION == '2.5' ]]; then pip install --use-mirrors twisted==11.0.0 'zope.interface<4.0'; fi
     - pip install . --use-mirrors
 script: trial tests/
