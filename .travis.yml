@@ -14,5 +14,5 @@ install:
     - cp /etc/redis/redis.conf /tmp/redis.conf
     - echo "unixsocket /tmp/redis.sock" >> /tmp/redis.conf
     - sudo mv /tmp/redis.conf /etc/redis/redis.conf
-    - sudo invoke-rc.d redis restart
+    - sudo invoke-rc.d redis-server restart
 script: trial tests/
