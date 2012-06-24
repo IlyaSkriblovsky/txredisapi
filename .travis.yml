@@ -11,6 +11,8 @@ install:
     - if [[ $TRAVIS_PYTHON_VERSION == "pypy" ]]; then sudo apt-get install pypy-dev; fi
     - if [[ $TRAVIS_PYTHON_VERSION == '2.5' ]]; then pip install --use-mirrors twisted==11.0.0 'zope.interface<4.0'; fi
     - pip install . --use-mirrors
-    - sudo echo "unixsocket /tmp/redis.sock" >> /etc/redis/redis.conf
+    - cat /etc/redis/redis.conf >> config
+    - echo "unixsocket /tmp/redis.sock" >> config
+    - sudo mv config /etc/redis/redis.conf
     - sudo invoke-rc.d redis restart
 script: trial tests/
