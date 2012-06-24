@@ -326,7 +326,7 @@ This is the server running in one terminal::
 	2012-02-17 15:40:53-0500 [RedisProtocol,client] 200 POST /text/foo (127.0.0.1) 1.20ms
 	2012-02-17 15:41:01-0500 [RedisProtocol,client] 200 GET /text/foo (127.0.0.1) 0.97ms
 	2012-02-17 15:41:09-0500 [RedisProtocol,client] 200 DELETE /text/foo (127.0.0.1) 0.65ms
-	(here I killed redis-server)
+	(killed redis-server)
 	2012-02-17 15:48:48-0500 [HTTPConnection,0,127.0.0.1] Redis failed to get('foo'): Not connected
 	2012-02-17 15:48:48-0500 [HTTPConnection,0,127.0.0.1] 503 GET /text/foo (127.0.0.1) 2.99ms
 
@@ -503,6 +503,7 @@ This is how to authenticate::
 	    print (yield redis.get("foo"))
 	    reactor.stop()
 
+
 	if __name__ == "__main__":
 	    main()
 	    reactor.run()
@@ -531,4 +532,8 @@ Thanks to (in no particular order):
 
 - Vanderson Mota
 
-  - Initial pypi setup, and patches
+  - Initial pypi setup, and patches.
+
+- Jeethu Rao
+
+  - Contributed with test cases, and other ideas like support for travis-ci
