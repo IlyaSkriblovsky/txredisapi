@@ -97,7 +97,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.errors = errors
 
         self.bulk_length = 0
-        self.bulk_buffer = ""
+        self.bulk_buffer = []
         self.multi_bulk_length = 0
         self.multi_bulk_reply = []
         self.replyQueueLength = 0
@@ -194,10 +194,10 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         else:
             rest = ""
 
-        self.bulk_buffer += data
+        self.bulk_buffer.append(data)
         if self.bulk_length == 0:
-            bulk_buffer = self.bulk_buffer[:-2]
-            self.bulk_buffer = ""
+            bulk_buffer = ''.join(self.bulk_buffer)[:-2]
+            self.bulk_buffer = []
             self.bulkDataReceived(bulk_buffer)
             while self.multi_bulk_length > 0 and rest:
                 if rest[0] == self.BULK:
