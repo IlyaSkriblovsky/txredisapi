@@ -30,8 +30,6 @@ import types
 import warnings
 import zlib
 
-from itertools import imap
-
 from twisted.internet import defer
 from twisted.internet import protocol
 from twisted.internet import reactor
@@ -99,7 +97,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.errors = errors
 
         self.bulk_length = 0
-        self.bulk_buffer = ""
+        self.bulk_buffer = []
         self.multi_bulk_length = 0
         self.multi_bulk_reply = []
         self.replyQueueLength = 0
@@ -196,10 +194,10 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         else:
             rest = ""
 
-        self.bulk_buffer += data
+        self.bulk_buffer.append(data)
         if self.bulk_length == 0:
-            bulk_buffer = self.bulk_buffer[:-2]
-            self.bulk_buffer = ""
+            bulk_buffer = ''.join(self.bulk_buffer)[:-2]
+            self.bulk_buffer = []
             self.bulkDataReceived(bulk_buffer)
             while self.multi_bulk_length > 0 and rest:
                 if rest[0] == self.BULK:
@@ -314,33 +312,30 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.replyQueueLength += 1
         self.replyQueue.put(reply)
 
-    def get_response(self):
-        """return deferred which will fire with response from server.
-        """
-        self.replyQueueLength -= 1
-        return self.replyQueue.get()
-
-    def encode(self, s):
-        if isinstance(s, str):
-            return s
-        if isinstance(s, unicode):
-            try:
-                return s.encode(self.charset, self.errors)
-            except UnicodeEncodeError, e:
-                raise InvalidData(
-                "Error encoding unicode value '%s': %s" % (repr(s), e))
-        if isinstance(s, float):
-            return format(s, "f")
-        return str(s)
-
     def execute_command(self, *args):
         if self.connected == 0:
             raise ConnectionError("Not connected")
         else:
-            cmds = ["$%s\r\n%s\r\n" % (len(enc_value), enc_value)
-                for enc_value in imap(self.encode, args)]
+            cmds = []
+            cmd_template = "$%s\r\n%s\r\n"
+            for s in args:
+                if isinstance(s, str):
+                    cmd = s
+                elif isinstance(s, unicode):
+                    try:
+                        cmd = s.encode(self.charset, self.errors)
+                    except UnicodeEncodeError, e:
+                        raise InvalidData(
+                            "Error encoding unicode value '%s': %s" %
+                            (repr(s), e))
+                elif isinstance(s, float):
+                    cmd = format(s, "f")
+                else:
+                    cmd = str(s)
+                cmds.append(cmd_template % (len(cmd), cmd))
             self.transport.write("*%s\r\n%s" % (len(cmds), "".join(cmds)))
-            return self.get_response()
+            self.replyQueueLength -= 1
+            return self.replyQueue.get()
 
     ##
     # REDIS COMMANDS
