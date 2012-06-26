@@ -43,3 +43,16 @@ class TestRedisConnections(unittest.TestCase):
         self.assertEqual(values, [1, None, 2])
 
         yield db.disconnect()
+
+    @defer.inlineCallbacks
+    def testRedisError(self):
+        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        yield db.set('txredisapi:a', 'test')
+        try:
+            yield db.incr('txredisapi:a')
+        except redis.ResponseError:
+            pass
+        else:
+            yield db.disconnect()
+            self.fail('Response error not raise on redis error')
+        yield db.disconnect()

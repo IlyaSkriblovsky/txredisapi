@@ -319,6 +319,12 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.replyQueueLength += 1
         self.replyQueue.put(reply)
 
+    @staticmethod
+    def handle_reply(r):
+        if isinstance(r, Exception):
+            raise r
+        return r
+
     def execute_command(self, *args):
         if self.connected == 0:
             raise ConnectionError("Not connected")
@@ -342,7 +348,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 cmds.append(cmd_template % (len(cmd), cmd))
             self.transport.write("*%s\r\n%s" % (len(cmds), "".join(cmds)))
             self.replyQueueLength -= 1
-            return self.replyQueue.get()
+            return self.replyQueue.get().addCallback(self.handle_reply)
 
     ##
     # REDIS COMMANDS
