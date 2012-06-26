@@ -49,10 +49,24 @@ class TestRedisConnections(unittest.TestCase):
         db = yield redis.Connection(redis_host, redis_port, reconnect=False)
         yield db.set('txredisapi:a', 'test')
         try:
+            yield db.sort('txredisapi:a', end='a')
+        except redis.RedisError:
+            pass
+        else:
+            yield db.disconnect()
+            self.fail('RedisError not raised')
+
+        try:
             yield db.incr('txredisapi:a')
         except redis.ResponseError:
             pass
         else:
             yield db.disconnect()
-            self.fail('Response error not raise on redis error')
+            self.fail('ResponseError not raised on redis error')
         yield db.disconnect()
+        try:
+            yield db.get('txredisapi:a')
+        except redis.ConnectionError:
+            pass
+        else:
+            self.fail('ConnectionError not raised')
