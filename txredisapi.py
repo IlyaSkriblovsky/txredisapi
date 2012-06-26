@@ -29,6 +29,7 @@ import re
 import types
 import warnings
 import zlib
+import string
 
 from twisted.internet import defer
 from twisted.internet import protocol
@@ -79,6 +80,9 @@ def list_or_args(command, keys, args):
             "Pass an iterable to ``keys`` instead" % command))
         keys.extend(args)
     return keys
+
+# Possible first characters in a string containing an integer or a float.
+_NUM_FIRST_CHARS = frozenset(string.digits + '+-.')
 
 
 class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
@@ -269,12 +273,15 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         Receipt of a bulk data element.
         """
-        if data is None:
-            element = data
-        else:
-            try:
-                element = int(data) if data.find('.') == -1 else float(data)
-            except (ValueError):
+        element = None
+        if data is not None:
+            if data and data[0] in _NUM_FIRST_CHARS:  # Most likely a number
+                try:
+                    element = int(data) if data.find('.') == -1 else \
+                              float(data)
+                except ValueError:
+                    pass
+            if element is None:
                 try:
                     element = data.decode(self.charset)
                 except UnicodeDecodeError:
