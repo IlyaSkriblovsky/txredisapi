@@ -24,13 +24,8 @@ from twisted.trial import unittest
 base.DelayedCall.debug = False
 redis_sock = "/tmp/redis.sock"
 
-if os.path.exists(redis_sock):
-    UT = unittest.TestCase
-else:
-    UT = object
 
-
-class TestUnixConnectionMethods(UT):
+class TestUnixConnectionMethods(unittest.TestCase):
     @defer.inlineCallbacks
     def test_UnixConnection(self):
         db = yield redis.UnixConnection(redis_sock, reconnect=False)
@@ -81,3 +76,6 @@ class TestUnixConnectionMethods(UT):
         self.assertEqual(isinstance(db,
                                     redis.ShardedUnixConnectionHandler), True)
         yield db.disconnect()
+
+if not os.path.exists(redis_sock):
+    TestUnixConnectionMethods.skip = True
