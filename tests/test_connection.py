@@ -34,14 +34,14 @@ class TestConnectionMethods(unittest.TestCase):
     @defer.inlineCallbacks
     def test_ConnectionDB1(self):
         db = yield redis.Connection(redis_host, redis_port, dbid=1,
-                reconnect=False)
+                                    reconnect=False)
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_ConnectionPool(self):
         db = yield redis.ConnectionPool(redis_host, redis_port, poolsize=2,
-                reconnect=False)
+                                        reconnect=False)
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
 

@@ -174,7 +174,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 reply = int(data)
             except ValueError:
                 reply = InvalidResponse(
-                        "Cannot convert data '%s' to integer" % data)
+                    "Cannot convert data '%s' to integer" % data)
 
             if self.multi_bulk_length:
                 self.handleMultiBulkElement(reply)
@@ -185,7 +185,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.bulk_length = long(data)
             except ValueError:
                 self.replyReceived(InvalidResponse(
-                 "Cannot convert data '%s' to integer" % data))
+                    "Cannot convert data '%s' to integer" % data))
                 return
             if self.bulk_length == -1:
                 self.bulkDataReceived(None)
@@ -198,8 +198,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.multi_bulk_length = long(data)
             except (TypeError, ValueError):
                 self.replyReceived(InvalidResponse(
-                 "Cannot convert multi-response header '%s' to integer" % \
-                 data))
+                    "Cannot convert multi-response header '%s' to integer" %
+                    data))
                 self.multi_bulk_length = 0
                 return
             if self.multi_bulk_length == -1:
@@ -253,7 +253,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             if data and data[0] in _NUM_FIRST_CHARS:  # Most likely a number
                 try:
                     element = int(data) if data.find('.') == -1 else \
-                              float(data)
+                        float(data)
                 except ValueError:
                     pass
             if element is None:
@@ -693,7 +693,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Move the specified member from one Set to another atomically
         """
         return self.execute_command(
-                "SMOVE", srckey, dstkey, member).addCallback(bool)
+            "SMOVE", srckey, dstkey, member).addCallback(bool)
 
     def scard(self, key):
         """
@@ -713,7 +713,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         keys = list_or_args("sinter", keys, args)
         return self.execute_command("SINTER", *keys).addCallback(
-                self._make_set)
+            self._make_set)
 
     def sinterstore(self, dstkey, keys, *args):
         """
@@ -729,7 +729,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         keys = list_or_args("sunion", keys, args)
         return self.execute_command("SUNION", *keys).addCallback(
-                self._make_set)
+            self._make_set)
 
     def sunionstore(self, dstkey, keys, *args):
         """
@@ -746,7 +746,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         keys = list_or_args("sdiff", keys, args)
         return self.execute_command("SDIFF", *keys).addCallback(
-                self._make_set)
+            self._make_set)
 
     def sdiffstore(self, dstkey, keys, *args):
         """
@@ -761,7 +761,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         Return all the members of the Set value at key
         """
         return self.execute_command("SMEMBERS", key).addCallback(
-                self._make_set)
+            self._make_set)
 
     def srandmember(self, key):
         """
@@ -855,9 +855,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self._zrange(key, start, end, withscores, True)
 
-    def _zrangebyscore(self, key, min, max, withscores, offset,
-            count, reverse):
-        if reverse:
+    def _zrangebyscore(self, key, min, max, withscores, offset, count, rev):
+        if rev:
             cmd = "ZREVRANGEBYSCORE"
         else:
             cmd = "ZRANGEBYSCORE"
@@ -876,22 +875,22 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         return r
 
     def zrangebyscore(self, key, min='-inf', max='+inf', withscores=False,
-            offset=None, count=None):
+                      offset=None, count=None):
         """
         Return all the elements with score >= min and score <= max
         (a range query) from the sorted set
         """
         return self._zrangebyscore(key, min, max, withscores, offset,
-                count, False)
+                                   count, False)
 
     def zrevrangebyscore(self, key, max='+inf', min='-inf', withscores=False,
-            offset=None, count=None):
+                         offset=None, count=None):
         """
         ZRANGEBYSCORE in reverse order
         """
         # ZREVRANGEBYSCORE takes max before min
         return self._zrangebyscore(key, max, min, withscores, offset,
-                count, True)
+                                   count, True)
 
     def zcount(self, key, min='-inf', max='+inf'):
         """
@@ -1062,9 +1061,9 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     # Sorting
     def sort(self, key, start=None, end=None, by=None, get=None,
-            desc=None, alpha=False, store=None):
+             desc=None, alpha=False, store=None):
         if (start is not None and end is not None) or \
-            (end is not None and start is None):
+           (end is not None and start is None):
             raise RedisError("``start`` and ``end`` must both be specified")
 
         pieces = [key]
@@ -1099,7 +1098,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 keys = [keys]
             d = defer.Deferred()
             self.execute_command("WATCH", *keys).addCallback(
-                    self._watch_added, d)
+                self._watch_added, d)
         else:
             d = self.execute_command("MULTI").addCallback(self._multi_started)
         self.inTransaction = True
@@ -1109,7 +1108,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         if response != 'OK':
             d.errback(RedisError('Invalid WATCH response: %s' % response))
         self.execute_command("MULTI").addCallback(
-                self._multi_started).chainDeferred(d)
+            self._multi_started).chainDeferred(d)
 
     def _multi_started(self, response):
         if response != 'OK':
@@ -1128,7 +1127,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         if self.inTransaction is False:
             raise RedisError("Not in transaction")
         return self.execute_command("EXEC").addCallback(
-                self._commit_check)
+            self._commit_check)
 
     def discard(self):
         if self.inTransaction is False:
@@ -1420,7 +1419,7 @@ class ShardedConnectionHandler(object):
             assert isinstance(key, (str, unicode))
         except:
             raise ValueError(
-                  "Method '%s' requires a key as the first argument" % method)
+                "Method '%s' requires a key as the first argument" % method)
 
         m = _findhash.match(key)
         if m is not None and len(m.groups()) >= 1:
@@ -1469,7 +1468,7 @@ class ShardedConnectionHandler(object):
             except:
                 pass
             else:
-                nodes.append("%s:%s/%d" % \
+                nodes.append("%s:%s/%d" %
                              (cli.host, cli.port, conn._factory.size))
         return "<Redis Sharded Connection: %s>" % ", ".join(nodes)
 
@@ -1483,7 +1482,7 @@ class ShardedUnixConnectionHandler(ShardedConnectionHandler):
             except:
                 pass
             else:
-                nodes.append("%s/%d" % \
+                nodes.append("%s/%d" %
                              (cli.name, conn._factory.size))
         return "<Redis Sharded Connection: %s>" % ", ".join(nodes)
 
@@ -1495,11 +1494,11 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     def __init__(self, dbid, poolsize, isLazy=False,
                  handler=ConnectionHandler):
         if not isinstance(poolsize, int):
-            raise ValueError("Redis poolsize must be an integer, not %s" % \
+            raise ValueError("Redis poolsize must be an integer, not %s" %
                              repr(poolsize))
 
         if not isinstance(dbid, (int, types.NoneType)):
-            raise ValueError("Redis dbid must be an integer, not %s" % \
+            raise ValueError("Redis dbid must be an integer, not %s" %
                              repr(dbid))
 
         self.dbid = dbid

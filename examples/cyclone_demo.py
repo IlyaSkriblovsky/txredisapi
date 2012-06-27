@@ -71,7 +71,7 @@ class RedisMixin(object):
                 RedisMixin.psconn.subscribe(channel)
 
         RedisMixin.channels[channel].append(self)
-        log.msg("Client %s subscribed to %s" % \
+        log.msg("Client %s subscribed to %s" %
                 (self.request.remote_ip, channel))
 
     def unsubscribe_all(self, ign):
@@ -82,7 +82,7 @@ class RedisMixin(object):
             except:
                 continue
 
-            log.msg("Client %s unsubscribed from %s" % \
+            log.msg("Client %s unsubscribed from %s" %
                     (self.request.remote_ip, channel))
 
             # Unsubscribe from channel if no peers are listening
@@ -170,7 +170,7 @@ class QueueHandler(cyclone.web.RequestHandler, RedisMixin):
         try:
             n = yield self.dbconn.publish(channel, message.encode("utf-8"))
         except Exception, e:
-            log.msg("Redis failed to publish('%s', '%s'): %s" % \
+            log.msg("Redis failed to publish('%s', '%s'): %s" %
                     (channel, repr(message), str(e)))
             raise cyclone.web.HTTPError(503)
 
