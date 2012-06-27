@@ -154,11 +154,32 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         token = line[0]  # first byte indicates reply type
         data = line[1:]
         if token == self.ERROR:
-            self.errorReceived(data)
+            reply = ResponseError(data[4:] if data[:4] == "ERR" else data)
+
+            if self.multi_bulk_length:
+                self.handleMultiBulkElement(reply)
+            else:
+                self.replyReceived(reply)
         elif token == self.STATUS:
-            self.statusReceived(data)
-        elif token == self.INTEGER:
-            self.integerReceived(data)
+            if data == "QUEUED":
+                self.transactions += 1
+                self.replyReceived(data)
+            else:
+                if self.multi_bulk_length:
+                    self.handleMultiBulkElement(data)
+                else:
+                    self.replyReceived(data)
+        elif token == self.INTEGER:  # For handling integer replies.
+            try:
+                reply = int(data)
+            except ValueError:
+                reply = InvalidResponse(
+                        "Cannot convert data '%s' to integer" % data)
+
+            if self.multi_bulk_length:
+                self.handleMultiBulkElement(reply)
+            else:
+                self.replyReceived(reply)
         elif token == self.BULK:
             try:
                 self.bulk_length = long(data)
@@ -222,52 +243,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                         continue
                 break
             self.setLineMode(extra=rest)
-
-    def errorReceived(self, data):
-        """
-        Error from server.
-        """
-        reply = ResponseError(data[4:] if data[:4] == "ERR " else data)
-
-        if self.multi_bulk_length:
-            self.handleMultiBulkElement(reply)
-        else:
-            self.replyReceived(reply)
-
-    def statusReceived(self, data):
-        """
-        Single line status should always be a string.
-        """
-        #if data == "none":
-        #    reply = None # should this happen here in the client?
-        #else:
-        #    reply = data
-
-        reply = data
-        if reply == "QUEUED":
-            self.transactions += 1
-            self.replyReceived(reply)
-            return
-
-        if self.multi_bulk_length:
-            self.handleMultiBulkElement(reply)
-        else:
-            self.replyReceived(reply)
-
-    def integerReceived(self, data):
-        """
-        For handling integer replies.
-        """
-        try:
-            reply = int(data)
-        except ValueError:
-            reply = InvalidResponse(
-            "Cannot convert data '%s' to integer" % data)
-
-        if self.multi_bulk_length:
-            self.handleMultiBulkElement(reply)
-        else:
-            self.replyReceived(reply)
 
     def bulkDataReceived(self, data):
         """
