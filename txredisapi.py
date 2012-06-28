@@ -317,7 +317,10 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                             "Error encoding unicode value '%s': %s" %
                             (repr(s), e))
                 elif isinstance(s, float):
-                    cmd = format(s, "f")
+                    try:
+                        cmd = format(s, "f")
+                    except NameError:
+                        cmd = "%0.6f" % s
                 else:
                     cmd = str(s)
                 cmds.append(cmd_template % (len(cmd), cmd))
