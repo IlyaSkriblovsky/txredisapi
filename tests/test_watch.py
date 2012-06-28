@@ -43,8 +43,8 @@ class TestRedisConnections(unittest.TestCase):
 
     def _getRedisConnection(self, host=redis_host, port=redis_port, db=0):
         return redis.Connection(
-                host, port, dbid=db, reconnect=False).addCallback(
-                        self._db_connected)
+            host, port, dbid=db, reconnect=False).addCallback(
+                self._db_connected)
 
     def _check_watcherror(self, response, shouldError=False):
         if shouldError:

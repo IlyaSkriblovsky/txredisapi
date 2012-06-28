@@ -29,13 +29,13 @@ class SetsTests(unittest.TestCase):
     Tests to ensure that set returning operations return sets
     '''
     _KEYS = ['txredisapi:testsets1', 'txredisapi:testsets2',
-            'txredisapi:testsets3', 'txredisapi:testsets4']
+             'txredisapi:testsets3', 'txredisapi:testsets4']
     N = 1024
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.db = yield redis.Connection(redis_host,
-                redis_port, reconnect=False)
+        self.db = yield redis.Connection(redis_host, redis_port,
+                                         reconnect=False)
 
     @defer.inlineCallbacks
     def tearDown(self):

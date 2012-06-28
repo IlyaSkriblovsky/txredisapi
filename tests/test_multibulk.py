@@ -29,7 +29,7 @@ class LargeMultiBulk(unittest.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         self.db = yield redis.Connection(
-                redis_host, redis_port, reconnect=False)
+            redis_host, redis_port, reconnect=False)
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -49,3 +49,27 @@ class LargeMultiBulk(unittest.TestCase):
     def test_large_multibulk_str(self):
         data = set([os.urandom(10).encode('base64') for x in range(100)])
         return self._test_multibulk(data)
+
+    @defer.inlineCallbacks
+    def test_bulk_numeric(self):
+        test_values = [
+            '', '.hello', '+world', '123test',
+            +1, 0.1, 0.01, -0.1, 0, -10]
+        for v in test_values:
+            yield self.db.set(self._KEY, v)
+            r = yield self.db.get(self._KEY)
+            self.assertEqual(r, v)
+
+    @defer.inlineCallbacks
+    def test_bulk_corner_cases(self):
+        '''
+        Python's float() function consumes '+inf', '-inf' & 'nan' values.
+        Currently, we only convert bulk strings floating point numbers
+        if there's a '.' in the string.
+        This test is to ensure this behavior isn't broken in the future.
+        '''
+        values = ['+inf', '-inf', 'NaN']
+        for x in values:
+            yield self.db.set(self._KEY, x)
+            r = yield self.db.get(self._KEY)
+            self.assertEqual(r, x)
