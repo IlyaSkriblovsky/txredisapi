@@ -28,10 +28,10 @@ class SortedSetsTests(unittest.TestCase):
     Tests for sorted sets
     '''
     _KEYS = ['txredisapi:testssets1', 'txredisapi:testssets2',
-            'txredisapi:testssets3', 'txredisapi:testssets4']
+             'txredisapi:testssets3', 'txredisapi:testssets4']
 
     _NUMBERS = ["zero", "one", "two", "three", "four",
-            "five", "six", "seven", "eight", "nine"]
+                "five", "six", "seven", "eight", "nine"]
 
     @defer.inlineCallbacks
     def test_zaddrem(self):
@@ -52,10 +52,10 @@ class SortedSetsTests(unittest.TestCase):
         r = yield self.db.zrem(key, "two", "three")
         # Test if calling zadd with odd number of arguments errors out
         yield self.db.zadd(key, 1, "one", 2).addBoth(
-                self._check_invaliddata_error, shouldError=True)
+            self._check_invaliddata_error, shouldError=True)
         # Now try doing it the right way
         yield self.db.zadd(key, 1, "one", 2, "two").addBoth(
-                self._check_invaliddata_error)
+            self._check_invaliddata_error)
 
     @defer.inlineCallbacks
     def test_zcard_zcount(self):
@@ -156,22 +156,22 @@ class SortedSetsTests(unittest.TestCase):
     def test_zinterstore(self):
         agg_map = {
             'min': (('min', min), {
-                       -1: [('three', -3)],
-                        0: [(u'three', 0)],
-                        1: [(u'three', 3)],
-                        2: [(u'three', 3)],
+                    -1: [('three', -3)],
+                    0: [(u'three', 0)],
+                    1: [(u'three', 3)],
+                    2: [(u'three', 3)],
                     }),
             'max': (('max', max), {
-                       -1: [('three', 3)],
-                        0: [('three', 3)],
-                        1: [('three', 3)],
-                        2: [('three', 6)],
+                    -1: [('three', 3)],
+                    0: [('three', 3)],
+                    1: [('three', 3)],
+                    2: [('three', 6)],
                     }),
             'sum': (('sum', sum),  {
-                       -1: [('three', 0)],
-                        0: [('three', 3)],
-                        1: [('three', 6)],
-                        2: [('three', 9)],
+                    -1: [('three', 0)],
+                    0: [('three', 3)],
+                    1: [('three', 6)],
+                    2: [('three', 9)],
                     })
         }
         return self._test_zunion_inter_store(self.db.zinterstore, agg_map)
@@ -179,35 +179,35 @@ class SortedSetsTests(unittest.TestCase):
     def test_zunionstore(self):
         agg_map = {
             'min': (('min', min), {
-                        -1: [('five', -5), ('four', -4), ('three', -3),
-                            ('one', 1), ('two', 2)],
-                        0: [('five', 0), ('four', 0), ('three', 0),
-                            ('one', 1), ('two', 2)],
-                        1: [('one', 1), ('two', 2), ('three', 3),
-                            ('four', 4), ('five', 5)],
-                        2: [('one', 1), ('two', 2), ('three', 3),
-                            ('four', 8), ('five', 10)]
-                    }),
+                -1: [('five', -5), ('four', -4), ('three', -3),
+                    ('one', 1), ('two', 2)],
+                0: [('five', 0), ('four', 0), ('three', 0),
+                    ('one', 1), ('two', 2)],
+                1: [('one', 1), ('two', 2), ('three', 3),
+                    ('four', 4), ('five', 5)],
+                2: [('one', 1), ('two', 2), ('three', 3),
+                    ('four', 8), ('five', 10)]
+            }),
             'max': (('max', max), {
-                        -1: [('five', -5), ('four', -4), ('one', 1),
-                            ('two', 2), ('three', 3)],
-                        0: [('five', 0), ('four', 0), ('one', 1),
-                            ('two', 2), ('three', 3)],
-                        1: [('one', 1), ('two', 2), ('three', 3),
-                            ('four', 4), ('five', 5)],
-                        2: [('one', 1), ('two', 2), ('three', 6),
-                            ('four', 8), ('five', 10)]
-                    }),
+                -1: [('five', -5), ('four', -4), ('one', 1),
+                     ('two', 2), ('three', 3)],
+                0: [('five', 0), ('four', 0), ('one', 1),
+                    ('two', 2), ('three', 3)],
+                1: [('one', 1), ('two', 2), ('three', 3),
+                    ('four', 4), ('five', 5)],
+                2: [('one', 1), ('two', 2), ('three', 6),
+                    ('four', 8), ('five', 10)]
+            }),
             'sum': (('sum', sum),  {
-                        -1: [('five', -5), ('four', -4), ('three', 0),
-                            ('one', 1), ('two', 2)],
-                        0: [('five', 0), ('four', 0), ('one', 1),
-                            ('two', 2), ('three', 3)],
-                        1: [('one', 1), ('two', 2), ('four', 4),
-                            ('five', 5), ('three', 6)],
-                        2: [('one', 1), ('two', 2), ('four', 8),
-                            ('three', 9), ('five', 10)]
-                    })
+                -1: [('five', -5), ('four', -4), ('three', 0),
+                   ('one', 1), ('two', 2)],
+                0: [('five', 0), ('four', 0), ('one', 1),
+                    ('two', 2), ('three', 3)],
+                1: [('one', 1), ('two', 2), ('four', 4),
+                                ('five', 5), ('three', 6)],
+                2: [('one', 1), ('two', 2), ('four', 8),
+                    ('three', 9), ('five', 10)]
+            })
         }
         return self._test_zunion_inter_store(self.db.zunionstore, agg_map)
 
@@ -226,24 +226,22 @@ class SortedSetsTests(unittest.TestCase):
                         keys = [key, key1]
                     else:
                         keys = {key: 1, key1: key1_weight}
-                    r = yield cmd(destKey, keys,
-                            aggregate=agg_fn)
+                    r = yield cmd(destKey, keys, aggregate=agg_fn)
                     if cmd == self.db.zunionstore:
                         t(r, len(set(l + l1)))
                     else:
                         t(r, len(set(l) & set(l1)))
                     r = yield self.db.zrange(destKey, withscores=True)
-                    t(r,
-                            agg_function_map[agg_fn_name][1][key1_weight])
+                    t(r, agg_function_map[agg_fn_name][1][key1_weight])
                     yield self.db.delete(destKey)
         # Finally, test for invalid aggregate functions
         yield self.db.delete(key, key1)
         yield self._make_sorted_set(key, begin=1, end=4)
         yield self._make_sorted_set(key1, begin=3, end=6)
         yield cmd(destKey, [key, key1], aggregate='SIN').addBoth(
-                self._check_invaliddata_error, shouldError=True)
+            self._check_invaliddata_error, shouldError=True)
         yield cmd(destKey, [key, key1], aggregate=lambda a, b: a + b).addBoth(
-                self._check_invaliddata_error, shouldError=True)
+            self._check_invaliddata_error, shouldError=True)
         yield self.db.delete(destKey)
 
     @defer.inlineCallbacks
@@ -272,9 +270,9 @@ class SortedSetsTests(unittest.TestCase):
         # Test for invalid offset and count
         yield self._make_sorted_set(key, begin=1, end=4)
         yield command(key, offset=1).addBoth(
-                self._check_invaliddata_error, shouldError=True)
+            self._check_invaliddata_error, shouldError=True)
         yield command(key, count=1).addBoth(
-                self._check_invaliddata_error, shouldError=True)
+            self._check_invaliddata_error, shouldError=True)
 
     @defer.inlineCallbacks
     def _test_zrank(self, reverse):
@@ -336,17 +334,17 @@ class SortedSetsTests(unittest.TestCase):
         for x in range(begin, end):
             l.extend((x, self._to_words(x)))
         return self.db.zadd(key, *l).addCallback(
-                self._sorted_set_check, zip(l[1::2], l[::2]))
+            self._sorted_set_check, zip(l[1::2], l[::2]))
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.db = yield redis.Connection(redis_host,
-                redis_port, reconnect=False)
+        self.db = yield redis.Connection(redis_host, redis_port,
+                                         reconnect=False)
 
     def tearDown(self):
         return defer.gatherResults(
-                [self.db.delete(x) for x in self._KEYS]).addCallback(
-                        lambda ign: self.db.disconnect())
+            [self.db.delete(x) for x in self._KEYS]).addCallback(
+                lambda ign: self.db.disconnect())
 
     def _check_invaliddata_error(self, response, shouldError=False):
         if shouldError:
