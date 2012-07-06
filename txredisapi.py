@@ -102,8 +102,9 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         self.bulk_length = 0
         self.bulk_buffer = []
-        self.multi_bulk_length = 0
+        self.multi_bulk_length = []
         self.multi_bulk_reply = []
+        self.multi_bulk_level = -1
         self.replyQueueLength = 0
         self.replyQueue = defer.DeferredQueue()
 
@@ -156,7 +157,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         if token == self.ERROR:
             reply = ResponseError(data[4:] if data[:4] == "ERR" else data)
 
-            if self.multi_bulk_length:
+            if self.multi_bulk_level >= 0:
                 self.handleMultiBulkElement(reply)
             else:
                 self.replyReceived(reply)
@@ -165,7 +166,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.transactions += 1
                 self.replyReceived(data)
             else:
-                if self.multi_bulk_length:
+                if self.multi_bulk_level >= 0:
                     self.handleMultiBulkElement(data)
                 else:
                     self.replyReceived(data)
@@ -176,7 +177,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 reply = InvalidResponse(
                     "Cannot convert data '%s' to integer" % data)
 
-            if self.multi_bulk_length:
+            if self.multi_bulk_level >= 0:
                 self.handleMultiBulkElement(reply)
             else:
                 self.replyReceived(reply)
@@ -194,19 +195,20 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.bulk_length += 2  # \r\n
                 self.setRawMode()
         elif token == self.MULTI_BULK:
+            self.multi_bulk_level += 1
             try:
-                self.multi_bulk_length = long(data)
+                self.multi_bulk_length.append(long(data))
             except (TypeError, ValueError):
                 self.replyReceived(InvalidResponse(
                     "Cannot convert multi-response header '%s' to integer" %
                     data))
-                self.multi_bulk_length = 0
+                self.multi_bulk_length.append(0)
                 return
-            if self.multi_bulk_length == -1:
+            if self.multi_bulk_length[self.multi_bulk_level] == -1:
                 self.multi_bulk_reply = None
                 self.multiBulkDataReceived()
                 return
-            elif self.multi_bulk_length == 0:
+            elif self.multi_bulk_length[self.multi_bulk_level] == 0:
                 self.multiBulkDataReceived()
 
     def rawDataReceived(self, data):
@@ -224,7 +226,9 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             bulk_buffer = ''.join(self.bulk_buffer)[:-2]
             self.bulk_buffer = []
             self.bulkDataReceived(bulk_buffer)
-            while self.multi_bulk_length > 0 and rest:
+            while (self.multi_bulk_level >= 0
+                   and self.multi_bulk_length[self.multi_bulk_level] > 0
+                   and rest):
                 if rest[0] == self.BULK:
                     idx = rest.find(self.delimiter)
                     if idx == -1:
@@ -261,29 +265,51 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                     element = data.decode(self.charset)
                 except UnicodeDecodeError:
                     element = data
-        if self.multi_bulk_length > 0:
+        if (self.multi_bulk_level >= 0
+            and self.multi_bulk_length[self.multi_bulk_level] > 0):
             self.handleMultiBulkElement(element)
         else:
             self.replyReceived(element)
 
     def handleMultiBulkElement(self, element):
-        if self.inTransaction:
-            self.transactions -= 1
         self.multi_bulk_reply.append(element)
-        self.multi_bulk_length = self.multi_bulk_length - 1
+        self.multi_bulk_length[self.multi_bulk_level] -= 1
 
-        if self.multi_bulk_length == 0:
+        # Operations of a transaction are in the top-level of nested multi
+        # bulk operations so multi_bulk_level == 0
+        if self.multi_bulk_level == 0 and self.inTransaction:
+            self.transactions -= 1
+
+        # this level of multi bulk operations is done
+        if self.multi_bulk_length[self.multi_bulk_level] == 0:
             self.multiBulkDataReceived()
 
     def multiBulkDataReceived(self):
         """
         Receipt of list or set of bulk data elements.
         """
+
+        self.multi_bulk_level -= 1
+        self.multi_bulk_length.pop()
+
+        if self.multi_bulk_level == 0 and self.inTransaction:
+            self.transactions -= 1
+
+        # there are multi bulk levels left
+        if len(self.multi_bulk_length):
+            self.multi_bulk_length[self.multi_bulk_level] -= 1
+            if self.multi_bulk_length[self.multi_bulk_level] > 0:
+                return
+            # This level of multi bulk results has been finished, call this
+            # method again to process the level above
+            self.multiBulkDataReceived()
+            return
+
         if self.inTransaction and self.transactions == 0:
             self.inTransaction = False
+
         reply = self.multi_bulk_reply
         self.multi_bulk_reply = []
-        self.multi_bulk_length = 0
         self.replyReceived(reply)
 
     def replyReceived(self, reply):
