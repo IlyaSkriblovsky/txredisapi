@@ -39,7 +39,8 @@ class TestNestedMulti(unittest.TestCase):
     def testRedisNestedMulti(self):
         t = yield self.db.multi()
         yield t.hmset(self._KEYS[0], {'foo': 'fooz', 'bar': 'baz'})
-        yield t.hmset(self._KEYS[1], {'foo2': 'fooz2', 'bar2': 'baz22'})
+        yield t.hmset(self._KEYS[1], {'foo2': 'fooz2', 'bar2': 'baz2'})
+
         for key in self._KEYS:
             yield t.hgetall(key)
         result = yield t.commit()
@@ -50,5 +51,5 @@ class TestNestedMulti(unittest.TestCase):
             [u'foo', u'fooz', u'bar', u'baz'],
             [u'foo2', u'fooz2', u'bar2', u'baz2']
         ]
-
-        self.assertEqual(result, expected)
+        for index, expect in enumerate(expected):
+            self.assertEqual(set(result[index]), set(expect))

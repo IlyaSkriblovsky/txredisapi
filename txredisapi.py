@@ -104,6 +104,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.bulk_buffer = []
         self.multi_bulk_length = []
         self.multi_bulk_reply = []
+        self.current_multi_bulk_reply = []
         self.multi_bulk_level = -1
         self.replyQueueLength = 0
         self.replyQueue = defer.DeferredQueue()
@@ -196,6 +197,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.setRawMode()
         elif token == self.MULTI_BULK:
             self.multi_bulk_level += 1
+            self.multi_bulk_reply = self.current_multi_bulk_reply
+            self.current_multi_bulk_reply = []
             try:
                 self.multi_bulk_length.append(long(data))
             except (TypeError, ValueError):
@@ -205,7 +208,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self.multi_bulk_length.append(0)
                 return
             if self.multi_bulk_length[self.multi_bulk_level] == -1:
-                self.multi_bulk_reply = None
+                self.current_multi_bulk_reply = None
                 self.multiBulkDataReceived()
                 return
             elif self.multi_bulk_length[self.multi_bulk_level] == 0:
@@ -272,7 +275,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             self.replyReceived(element)
 
     def handleMultiBulkElement(self, element):
-        self.multi_bulk_reply.append(element)
+        self.current_multi_bulk_reply.append(element)
         self.multi_bulk_length[self.multi_bulk_level] -= 1
 
         # Operations of a transaction are in the top-level of nested multi
@@ -292,6 +295,10 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.multi_bulk_level -= 1
         self.multi_bulk_length.pop()
 
+        if self.multi_bulk_level >= 0:
+            self.multi_bulk_reply.append(self.current_multi_bulk_reply)
+            self.current_multi_bulk_reply = self.multi_bulk_reply
+
         if self.multi_bulk_level == 0 and self.inTransaction:
             self.transactions -= 1
 
@@ -308,8 +315,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         if self.inTransaction and self.transactions == 0:
             self.inTransaction = False
 
-        reply = self.multi_bulk_reply
-        self.multi_bulk_reply = []
+        reply = self.current_multi_bulk_reply
+        self.current_multi_bulk_reply = []
         self.replyReceived(reply)
 
     def replyReceived(self, reply):
