@@ -40,9 +40,8 @@ class TestNestedMulti(unittest.TestCase):
         t = yield self.db.multi()
         yield t.hmset(self._KEYS[0], {'foo': 'fooz', 'bar': 'baz'})
         yield t.hmset(self._KEYS[1], {'foo2': 'fooz2', 'bar2': 'baz2'})
-
-        for key in self._KEYS:
-            yield t.hgetall(key)
+        yield t.hgetall(self._KEYS[0])
+        yield t.hgetall(self._KEYS[1])
         result = yield t.commit()
 
         expected = [
