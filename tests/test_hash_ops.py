@@ -103,6 +103,26 @@ class TestRedisHashOperations(unittest.TestCase):
         yield db.disconnect()
 
     @defer.inlineCallbacks
+    def testRedisHLenHDelMulti(self):
+        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        t_dict = {}
+        t_dict['key1'] = 'uno'
+        t_dict['key2'] = 'dos'
+
+        s = yield db.hmset("txredisapi:HDelHExists", t_dict)
+        r_len = yield db.hlen("txredisapi:HDelHExists")
+        self.assertEqual(r_len, 2)
+
+        s = yield db.hdel("txredisapi:HDelHExists", ["key1", "key2"])
+        r_len = yield db.hlen("txredisapi:HDelHExists")
+        self.assertEqual(r_len, 0)
+
+        s = yield db.hexists("txredisapi:HDelHExists", ["key1", "key2"])
+        self.assertEqual(s, 0)
+
+        yield db.disconnect()
+
+    @defer.inlineCallbacks
     def testRedisHGetAll(self):
         db = yield redis.Connection(redis_host, redis_port, reconnect=False)
 
