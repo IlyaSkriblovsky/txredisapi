@@ -1030,11 +1030,15 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("HEXISTS", key, field)
 
-    def hdel(self, key, field):
+    def hdel(self, key, fields):
         """
-        Remove the specified field from a hash
+        Remove the specified field or fields from a hash
         """
-        return self.execute_command("HDEL", key, field)
+        if isinstance(fields, (str, unicode)):
+            fields = [fields]
+        else:
+            fields = list(fields)
+        return self.execute_command("HDEL", key, *fields)
 
     def hlen(self, key):
         """
