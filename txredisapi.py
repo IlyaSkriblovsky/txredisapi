@@ -656,7 +656,14 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         keys.append(timeout)
         return self.execute_command("BRPOP", *keys)
-
+    
+    def brpoplpush(self, source, destination):
+        """
+        Pop a value from a list, push it to another list and return
+        it; or block until one is available.
+        """
+        return self.execute_command("BRPOPLPUSH", source, destination)
+    
     def rpoplpush(self, srckey, dstkey):
         """
         Return and remove (atomically) the last element of the source

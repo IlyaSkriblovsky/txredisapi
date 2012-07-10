@@ -537,3 +537,7 @@ Thanks to (in no particular order):
 - Jeethu Rao
 
   - Contributed with test cases, and other ideas like support for travis-ci
+
+- Jeremy Archer
+  
+  - Minor bugfixes.
