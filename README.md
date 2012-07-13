@@ -61,10 +61,9 @@ However, if you really really insist in installing, get it from pypi:
 are available. Just start redis, and run ``trial ./tests``.
 If *unix sockets* are disabled in redis, it will silently skip those tests.
 
-There are live test results at <https://secure.travis-ci.org/fiorix/txredisapi>.
+Make sure you run `redis-cli flushall` to clean up redis after the tests.
 
-![Build Status](https://secure.travis-ci.org/fiorix/txredisapi.png)
-
+[![Build Status](https://secure.travis-ci.org/fiorix/txredisapi.png)](http://travis-ci.org/fiorix/txredisapi])
 
 Usage
 -----
