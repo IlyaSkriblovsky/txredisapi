@@ -1170,6 +1170,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     def discard(self):
         if self.inTransaction is False:
             raise RedisError("Not in transaction")
+        self.post_proc = []
         self.transactions = 0
         self.inTransaction = False
         return self.execute_command("DISCARD")
