@@ -23,7 +23,7 @@ redis_port = 6379
 
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
-    def testRedisOperations(self):
+    def testRedisOperations1(self):
         db = yield redis.Connection(redis_host, redis_port, reconnect=False)
 
         # test set() operation
@@ -33,13 +33,20 @@ class TestRedisConnections(unittest.TestCase):
             result = yield db.get(key)
             self.assertEqual(result, value)
 
-        d = {"txredisapi:a": 1, "txredisapi:b": 2}
-        yield db.mset(d)
-        values = yield db.mget(d.keys())
-        self.assertEqual(values, d.values())
+        yield db.disconnect()
 
-        keys = ['txredisapi:a', 'txredisapi:notset', 'txredisapi:b']
-        values = yield db.mget(keys)
+    @defer.inlineCallbacks
+    def testRedisOperations2(self):
+        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+
+        k = ["txredisapi:a", "txredisapi:b"]
+        v = [1, 2]
+        yield db.mset(dict(zip(k, v)))
+        values = yield db.mget(k)
+        self.assertEqual(values, v)
+
+        k = ['txredisapi:a', 'txredisapi:notset', 'txredisapi:b']
+        values = yield db.mget(k)
         self.assertEqual(values, [1, None, 2])
 
         yield db.disconnect()
