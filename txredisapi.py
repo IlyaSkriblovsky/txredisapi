@@ -82,7 +82,32 @@ def list_or_args(command, keys, args):
     return keys
 
 # Possible first characters in a string containing an integer or a float.
-_NUM_FIRST_CHARS = frozenset(string.digits + '+-.')
+_NUM_FIRST_CHARS = frozenset(string.digits + "+-.")
+
+
+class MultiBulkStorage(object):
+    def __init__(self, parent=None):
+        self.items = None
+        self.pending = None
+        self.parent = parent
+
+    def set_pending(self, pending):
+        if self.pending is None:
+            if pending < 0:
+                self.items = None
+                self.pending = 0
+            else:
+                self.items = []
+                self.pending = pending
+            return self
+        else:
+            m = MultiBulkStorage(self)
+            m.set_pending(pending)
+            return m
+
+    def append(self, item):
+        self.pending -= 1
+        self.items.append(item)
 
 
 class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
@@ -90,21 +115,16 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     Redis client protocol.
     """
 
-    ERROR = "-"
-    STATUS = "+"
-    INTEGER = ":"
-    BULK = "$"
-    MULTI_BULK = "*"
-
     def __init__(self, charset="utf-8", errors="strict"):
         self.charset = charset
         self.errors = errors
 
         self.bulk_length = 0
         self.bulk_buffer = []
-        self.multi_bulk_length = 0
-        self.multi_bulk_reply = []
-        self.replyQueueLength = 0
+
+        self.post_proc = []
+        self.multi_bulk = MultiBulkStorage()
+
         self.replyQueue = defer.DeferredQueue()
 
         self.transactions = 0
@@ -135,7 +155,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         self.connected = 0
         self.factory.delConnection(self)
         basic.LineReceiver.connectionLost(self, why)
-        while self.replyQueueLength < 0:
+        while self.replyQueue.pending:
             self.replyReceived(ConnectionError("Lost connection"))
 
     def lineReceived(self, line):
@@ -147,67 +167,67 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
           "$" bulk data
           "*" multi-bulk data
         """
-        if not line:
+        if line:
+            self.resetTimeout()
+            token, data = line[0], line[1:]
+        else:
             return
 
-        self.resetTimeout()
-        token = line[0]  # first byte indicates reply type
-        data = line[1:]
-        if token == self.ERROR:
-            reply = ResponseError(data[4:] if data[:4] == "ERR" else data)
-
-            if self.multi_bulk_length:
-                self.handleMultiBulkElement(reply)
+        if token == "$":  # bulk data
+            try:
+                self.bulk_length = long(data)
+            except ValueError:
+                self.replyReceived(InvalidResponse("Cannot convert data "
+                                                   "'%s' to integer" % data))
             else:
-                self.replyReceived(reply)
-        elif token == self.STATUS:
+                if self.bulk_length == -1:
+                    self.bulk_length = 0
+                    self.bulkDataReceived(None)
+                else:
+                    self.bulk_length += 2  # 2 == \r\n
+                    self.setRawMode()
+
+        elif token == "*":  # multi-bulk data
+            try:
+                n = long(data)
+            except (TypeError, ValueError):
+                self.multi_bulk = MultiBulkStorage()
+                self.replyReceived(InvalidResponse("Cannot convert "
+                                                   "multi-response header "
+                                                   "'%s' to integer" % data))
+            else:
+                self.multi_bulk = self.multi_bulk.set_pending(n)
+                if n in (0, -1):
+                    self.multiBulkDataReceived()
+
+        elif token == "+":  # single line status
             if data == "QUEUED":
                 self.transactions += 1
                 self.replyReceived(data)
             else:
-                if self.multi_bulk_length:
+                if self.multi_bulk.pending:
                     self.handleMultiBulkElement(data)
                 else:
                     self.replyReceived(data)
-        elif token == self.INTEGER:  # For handling integer replies.
+
+        elif token == "-":  # error
+            reply = ResponseError(data[4:] if data[:4] == "ERR" else data)
+            if self.multi_bulk.pending:
+                self.handleMultiBulkElement(reply)
+            else:
+                self.replyReceived(reply)
+
+        elif token == ":":  # integer
             try:
                 reply = int(data)
             except ValueError:
                 reply = InvalidResponse(
-                    "Cannot convert data '%s' to integer" % data)
+                        "Cannot convert data '%s' to integer" % data)
 
-            if self.multi_bulk_length:
+            if self.multi_bulk.pending:
                 self.handleMultiBulkElement(reply)
             else:
                 self.replyReceived(reply)
-        elif token == self.BULK:
-            try:
-                self.bulk_length = long(data)
-            except ValueError:
-                self.replyReceived(InvalidResponse(
-                    "Cannot convert data '%s' to integer" % data))
-                return
-            if self.bulk_length == -1:
-                self.bulkDataReceived(None)
-                return
-            else:
-                self.bulk_length += 2  # \r\n
-                self.setRawMode()
-        elif token == self.MULTI_BULK:
-            try:
-                self.multi_bulk_length = long(data)
-            except (TypeError, ValueError):
-                self.replyReceived(InvalidResponse(
-                    "Cannot convert multi-response header '%s' to integer" %
-                    data))
-                self.multi_bulk_length = 0
-                return
-            if self.multi_bulk_length == -1:
-                self.multi_bulk_reply = None
-                self.multiBulkDataReceived()
-                return
-            elif self.multi_bulk_length == 0:
-                self.multiBulkDataReceived()
 
     def rawDataReceived(self, data):
         """
@@ -221,77 +241,74 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
         self.bulk_buffer.append(data)
         if self.bulk_length == 0:
-            bulk_buffer = ''.join(self.bulk_buffer)[:-2]
+            bulk_buffer = "".join(self.bulk_buffer)[:-2]
             self.bulk_buffer = []
             self.bulkDataReceived(bulk_buffer)
-            while self.multi_bulk_length > 0 and rest:
-                if rest[0] == self.BULK:
-                    idx = rest.find(self.delimiter)
-                    if idx == -1:
-                        break
-                    data_len = int(rest[1:idx], 10)
-                    if data_len == -1:
-                        rest = rest[5:]
-                        self.bulkDataReceived(None)
-                        continue
-                    elif len(rest) >= (idx + 5 + data_len):
-                        data_start = idx + 2
-                        data_end = data_start + data_len
-                        data = rest[data_start: data_end]
-                        rest = rest[data_end + 2:]
-                        self.bulkDataReceived(data)
-                        continue
-                break
-            self.setLineMode(extra=rest)
+            reactor.callLater(0, self.setLineMode, extra=rest)
 
     def bulkDataReceived(self, data):
         """
         Receipt of a bulk data element.
         """
-        element = None
+        el = None
         if data is not None:
             if data and data[0] in _NUM_FIRST_CHARS:  # Most likely a number
                 try:
-                    element = int(data) if data.find('.') == -1 else \
-                        float(data)
+                    el = int(data) if data.find('.') == -1 else float(data)
                 except ValueError:
                     pass
-            if element is None:
+
+            if el is None:
                 try:
-                    element = data.decode(self.charset)
+                    el = data.decode(self.charset)
                 except UnicodeDecodeError:
-                    element = data
-        if self.multi_bulk_length > 0:
-            self.handleMultiBulkElement(element)
+                    el = data
+
+        if self.multi_bulk.pending or self.multi_bulk.items:
+            self.handleMultiBulkElement(el)
         else:
-            self.replyReceived(element)
+            self.replyReceived(el)
 
     def handleMultiBulkElement(self, element):
-        if self.inTransaction:
-            self.transactions -= 1
-        self.multi_bulk_reply.append(element)
-        self.multi_bulk_length = self.multi_bulk_length - 1
+        self.multi_bulk.append(element)
 
-        if self.multi_bulk_length == 0:
+        if not self.multi_bulk.pending:
             self.multiBulkDataReceived()
 
     def multiBulkDataReceived(self):
         """
         Receipt of list or set of bulk data elements.
         """
-        if self.inTransaction and self.transactions == 0:
-            self.inTransaction = False
-        reply = self.multi_bulk_reply
-        self.multi_bulk_reply = []
-        self.multi_bulk_length = 0
-        self.replyReceived(reply)
+        while self.multi_bulk.parent and not self.multi_bulk.pending:
+            p = self.multi_bulk.parent
+            p.append(self.multi_bulk.items)
+            self.multi_bulk = p
+
+        if not self.multi_bulk.pending:
+            reply = self.multi_bulk.items
+            self.multi_bulk = MultiBulkStorage()
+
+            if self.inTransaction and reply is not None:
+                self.transactions -= len(reply)
+                if not self.transactions:
+                    self.inTransaction = False
+
+                    tmp = []
+                    for f, v in zip(self.post_proc[1:], reply):
+                        if callable(f):
+                            tmp.append(f(v))
+                        else:
+                            tmp.append(v)
+                        reply = tmp
+                self.post_proc = []
+
+            self.replyReceived(reply)
 
     def replyReceived(self, reply):
         """
         Complete reply received and ready to be pushed to the requesting
         function.
         """
-        self.replyQueueLength += 1
         self.replyQueue.put(reply)
 
     @staticmethod
@@ -300,7 +317,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
             raise r
         return r
 
-    def execute_command(self, *args):
+    def execute_command(self, *args, **kwargs):
         if self.connected == 0:
             raise ConnectionError("Not connected")
         else:
@@ -325,8 +342,17 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                     cmd = str(s)
                 cmds.append(cmd_template % (len(cmd), cmd))
             self.transport.write("*%s\r\n%s" % (len(cmds), "".join(cmds)))
-            self.replyQueueLength -= 1
-            return self.replyQueue.get().addCallback(self.handle_reply)
+            r = self.replyQueue.get().addCallback(self.handle_reply)
+
+            if self.inTransaction:
+                self.post_proc.append(kwargs.get("post_proc"))
+            else:
+                if "post_proc" in kwargs:
+                    f = kwargs["post_proc"]
+                    if callable(f):
+                        r.addCallback(f)
+
+            return r
 
     ##
     # REDIS COMMANDS
@@ -1065,13 +1091,12 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("HVALS", key)
 
-    @defer.inlineCallbacks
     def hgetall(self, key):
         """
         Return all the fields and associated values in a hash.
         """
-        d = yield self.execute_command("HGETALL", key)
-        defer.returnValue(dict(zip(d[::2], d[1::2])))
+        f = lambda d: dict(zip(d[::2], d[1::2]))
+        return self.execute_command("HGETALL", key, post_proc=f)
 
     # Sorting
     def sort(self, key, start=None, end=None, by=None, get=None,
@@ -1107,6 +1132,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     # the transaction. At the end, either exec() or discard()
     # must be executed.
     def multi(self, keys=None):
+        self.inTransaction = True
         if keys:
             if isinstance(keys, (str, unicode)):
                 keys = [keys]
@@ -1115,7 +1141,6 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
                 self._watch_added, d)
         else:
             d = self.execute_command("MULTI").addCallback(self._multi_started)
-        self.inTransaction = True
         return d
 
     def _watch_added(self, response, d):
@@ -1131,8 +1156,8 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     def _commit_check(self, response):
         if response is None:
-            self.inTransaction = False
             self.transactions = 0
+            self.inTransaction = False
             raise WatchError("Transaction failed")
         else:
             return response
@@ -1140,8 +1165,7 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
     def commit(self):
         if self.inTransaction is False:
             raise RedisError("Not in transaction")
-        return self.execute_command("EXEC").addCallback(
-            self._commit_check)
+        return self.execute_command("EXEC").addCallback(self._commit_check)
 
     def discard(self):
         if self.inTransaction is False:
@@ -1709,4 +1733,4 @@ __all__ = [
 ]
 
 __author__ = "Alexandre Fiori"
-__version__ = version = "0.5"
+__version__ = version = "0.6"
