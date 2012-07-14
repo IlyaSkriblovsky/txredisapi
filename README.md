@@ -79,30 +79,30 @@ to redis, execute a couple of commands and disconnect - like crawlers, etc.
 
 Example:
 
-	#!/usr/bin/env python
-	# coding: utf-8
+    #!/usr/bin/env python
+    # coding: utf-8
 
-	import txredisapi as redis
+    import txredisapi as redis
 
-	from twisted.internet import defer
-	from twisted.internet import reactor
-
-
-	@defer.inlineCallbacks
-	def main():
-	    rc = yield redis.Connection()
-	    print rc
-
-	    yield rc.set("foo", "bar")
-	    v = yield rc.get("foo")
-	    print "foo:", repr(v)
-
-	    yield rc.disconnect()
+    from twisted.internet import defer
+    from twisted.internet import reactor
 
 
-	if __name__ == "__main__":
-	    main().addCallback(lambda ign: reactor.stop())
-	    reactor.run()
+    @defer.inlineCallbacks
+    def main():
+        rc = yield redis.Connection()
+        print rc
+
+        yield rc.set("foo", "bar")
+        v = yield rc.get("foo")
+        print "foo:", repr(v)
+
+        yield rc.disconnect()
+
+
+    if __name__ == "__main__":
+        main().addCallback(lambda ign: reactor.stop())
+        reactor.run()
 
 
 Easily switch between ``redis.Connection()`` and ``redis.ConnectionPool()``
@@ -110,29 +110,29 @@ with absolutely no changes to the logic of your program.
 
 These are all the supported methods for connecting to Redis::
 
-	Connection(host, port, dbid, reconnect)
-	lazyConnection(host, port, dbid, reconnect)
+    Connection(host, port, dbid, reconnect)
+    lazyConnection(host, port, dbid, reconnect)
 
-	ConnectionPool(host, port, dbid, poolsize, reconnect)
-	lazyConnectionPool(host, port, dbid, poolsize, reconnect)
+    ConnectionPool(host, port, dbid, poolsize, reconnect)
+    lazyConnectionPool(host, port, dbid, poolsize, reconnect)
 
-	ShardedConnection(hosts, dbid, reconnect)
-	lazyShardedConnection(hosts, dbid, reconnect)
+    ShardedConnection(hosts, dbid, reconnect)
+    lazyShardedConnection(hosts, dbid, reconnect)
 
-	ShardedConnectionPool(hosts, dbid, poolsize, reconnect)
-	lazyShardedConnectionPool(hosts, dbid, poolsize, reconnect)
+    ShardedConnectionPool(hosts, dbid, poolsize, reconnect)
+    lazyShardedConnectionPool(hosts, dbid, poolsize, reconnect)
 
-	UnixConnection(path, dbid, reconnect)
-	lazyUnixConnection(path, dbid, reconnect)
+    UnixConnection(path, dbid, reconnect)
+    lazyUnixConnection(path, dbid, reconnect)
 
-	UnixConnectionPool(unix, dbid, poolsize, reconnect)
-	lazyUnixConnectionPool(unix, dbid, poolsize, reconnect)
+    UnixConnectionPool(unix, dbid, poolsize, reconnect)
+    lazyUnixConnectionPool(unix, dbid, poolsize, reconnect)
 
-	ShardedUnixConnection(paths, dbid, reconnect)
-	lazyShardedUnixConnection(paths, dbid, reconnect)
+    ShardedUnixConnection(paths, dbid, reconnect)
+    lazyShardedUnixConnection(paths, dbid, reconnect)
 
-	ShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
-	lazyShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
+    ShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
+    lazyShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
 
 
 The arguments are:
@@ -171,45 +171,45 @@ initialization, it will continuosly try to reconnect, in background.
 
 Example:
 
-	#!/usr/bin/env python
-	# coding: utf-8
+    #!/usr/bin/env python
+    # coding: utf-8
 
-	import txredisapi as redis
+    import txredisapi as redis
 
-	from twisted.internet import defer
-	from twisted.internet import reactor
-
-
-	def sleep(n):
-	    d = defer.Deferred()
-	    reactor.callLater(5, lambda *ign: d.callback(None))
-	    return d
+    from twisted.internet import defer
+    from twisted.internet import reactor
 
 
-	@defer.inlineCallbacks
-	def main():
-	    rc = yield redis.ConnectionPool()
-	    print rc
-
-	    # set
-	    yield rc.set("foo", "bar")
-
-	    # sleep, so you can kill redis
-	    print "sleeping for 5s, kill redis now..."
-	    yield sleep(5)
-
-	    try:
-		v = yield rc.get("foo")
-		print "foo:", v
-
-		yield rc.disconnect()
-	    except redis.ConnectionError, e:
-		print str(e)
+    def sleep(n):
+        d = defer.Deferred()
+        reactor.callLater(5, lambda *ign: d.callback(None))
+        return d
 
 
-	if __name__ == "__main__":
-	    main().addCallback(lambda ign: reactor.stop())
-	    reactor.run()
+    @defer.inlineCallbacks
+    def main():
+        rc = yield redis.ConnectionPool()
+        print rc
+
+        # set
+        yield rc.set("foo", "bar")
+
+        # sleep, so you can kill redis
+        print "sleeping for 5s, kill redis now..."
+        yield sleep(5)
+
+        try:
+          v = yield rc.get("foo")
+          print "foo:", v
+
+          yield rc.disconnect()
+        except redis.ConnectionError, e:
+          print str(e)
+
+
+    if __name__ == "__main__":
+        main().addCallback(lambda ign: reactor.stop())
+        reactor.run()
 
 
 ### Lazy Connections ###
@@ -240,49 +240,49 @@ of requests. Then, start redis again and give it another try.
 
 Example:
 
-	#!/usr/bin/env python
-	# coding: utf-8
+    #!/usr/bin/env python
+    # coding: utf-8
 
-	import sys
+    import sys
 
-	import cyclone.web
-	import cyclone.redis
-	from twisted.internet import defer
-	from twisted.internet import reactor
-	from twisted.python import log
-
-
-	class Application(cyclone.web.Application):
-	    def __init__(self):
-		handlers = [ (r"/text/(.+)", TextHandler) ]
-
-		RedisMixin.setup()
-		cyclone.web.Application.__init__(self, handlers, debug=True)
+    import cyclone.web
+    import cyclone.redis
+    from twisted.internet import defer
+    from twisted.internet import reactor
+    from twisted.python import log
 
 
-	class RedisMixin(object):
-	    redis_conn = None
+    class Application(cyclone.web.Application):
+        def __init__(self):
+          handlers = [ (r"/text/(.+)", TextHandler) ]
 
-	    @classmethod
-	    def setup(self):
+          RedisMixin.setup()
+          cyclone.web.Application.__init__(self, handlers, debug=True)
+
+
+    class RedisMixin(object):
+        redis_conn = None
+
+        @classmethod
+        def setup(self):
             RedisMixin.redis_conn = cyclone.redis.lazyConnectionPool()
 
 
-	# Provide GET, SET and DELETE redis operations via HTTP
-	class TextHandler(cyclone.web.RequestHandler, RedisMixin):
-	    @defer.inlineCallbacks
-	    def get(self, key):
-		try:
-		    value = yield self.redis_conn.get(key)
-		except Exception, e:
-		    log.msg("Redis failed to get('%s'): %s" % (key, str(e)))
-		    raise cyclone.web.HTTPError(503)
+    # Provide GET, SET and DELETE redis operations via HTTP
+    class TextHandler(cyclone.web.RequestHandler, RedisMixin):
+        @defer.inlineCallbacks
+        def get(self, key):
+          try:
+              value = yield self.redis_conn.get(key)
+          except Exception, e:
+              log.msg("Redis failed to get('%s'): %s" % (key, str(e)))
+              raise cyclone.web.HTTPError(503)
 
-		self.set_header("Content-Type", "text/plain")
-		self.write("%s=%s\r\n" % (key, value))
+          self.set_header("Content-Type", "text/plain")
+          self.write("%s=%s\r\n" % (key, value))
 
-	    @defer.inlineCallbacks
-	    def post(self, key):
+        @defer.inlineCallbacks
+        def post(self, key):
             value = self.get_argument("value")
             try:
                 yield self.redis_conn.set(key, value)
@@ -293,8 +293,8 @@ Example:
             self.set_header("Content-Type", "text/plain")
             self.write("%s=%s\r\n" % (key, value))
 
-	    @defer.inlineCallbacks
-	    def delete(self, key):
+        @defer.inlineCallbacks
+        def delete(self, key):
             try:
                 n = yield self.redis_conn.delete(key)
             except Exception, e:
@@ -305,70 +305,70 @@ Example:
             self.write("DEL %s=%d\r\n" % (key, n))
 
 
-	def main():
-	    log.startLogging(sys.stdout)
-	    reactor.listenTCP(8888, Application(), interface="127.0.0.1")
-	    reactor.run()
+    def main():
+        log.startLogging(sys.stdout)
+        reactor.listenTCP(8888, Application(), interface="127.0.0.1")
+        reactor.run()
 
 
-	if __name__ == "__main__":
-	    main()
+    if __name__ == "__main__":
+        main()
 
 
 This is the server running in one terminal::
 
-	$ ./helloworld.py
-	2012-02-17 15:40:25-0500 [-] Log opened.
-	2012-02-17 15:40:25-0500 [-] Starting factory <redis.Factory instance at 0x1012f0560>
-	2012-02-17 15:40:25-0500 [-] __main__.Application starting on 8888
-	2012-02-17 15:40:25-0500 [-] Starting factory <__main__.Application instance at 0x100f42290>
-	2012-02-17 15:40:53-0500 [RedisProtocol,client] 200 POST /text/foo (127.0.0.1) 1.20ms
-	2012-02-17 15:41:01-0500 [RedisProtocol,client] 200 GET /text/foo (127.0.0.1) 0.97ms
-	2012-02-17 15:41:09-0500 [RedisProtocol,client] 200 DELETE /text/foo (127.0.0.1) 0.65ms
-	(killed redis-server)
-	2012-02-17 15:48:48-0500 [HTTPConnection,0,127.0.0.1] Redis failed to get('foo'): Not connected
-	2012-02-17 15:48:48-0500 [HTTPConnection,0,127.0.0.1] 503 GET /text/foo (127.0.0.1) 2.99ms
+    $ ./helloworld.py
+    2012-02-17 15:40:25-0500 [-] Log opened.
+    2012-02-17 15:40:25-0500 [-] Starting factory <redis.Factory instance at 0x1012f0560>
+    2012-02-17 15:40:25-0500 [-] __main__.Application starting on 8888
+    2012-02-17 15:40:25-0500 [-] Starting factory <__main__.Application instance at 0x100f42290>
+    2012-02-17 15:40:53-0500 [RedisProtocol,client] 200 POST /text/foo (127.0.0.1) 1.20ms
+    2012-02-17 15:41:01-0500 [RedisProtocol,client] 200 GET /text/foo (127.0.0.1) 0.97ms
+    2012-02-17 15:41:09-0500 [RedisProtocol,client] 200 DELETE /text/foo (127.0.0.1) 0.65ms
+    (killed redis-server)
+    2012-02-17 15:48:48-0500 [HTTPConnection,0,127.0.0.1] Redis failed to get('foo'): Not connected
+    2012-02-17 15:48:48-0500 [HTTPConnection,0,127.0.0.1] 503 GET /text/foo (127.0.0.1) 2.99ms
 
 
 And these are the requests, from ``curl`` in another terminal.
 
 Set:
 
-	$ curl -D - -d "value=bar" http://localhost:8888/text/foo
-	HTTP/1.1 200 OK
-	Content-Length: 9
-	Content-Type: text/plain
+    $ curl -D - -d "value=bar" http://localhost:8888/text/foo
+    HTTP/1.1 200 OK
+    Content-Length: 9
+    Content-Type: text/plain
 
-	foo=bar
+    foo=bar
 
 Get:
 
-	$ curl -D - http://localhost:8888/text/foo
-	HTTP/1.1 200 OK
-	Content-Length: 9
-	Etag: "b63729aa7fa0e438eed735880951dcc21d733676"
-	Content-Type: text/plain
+    $ curl -D - http://localhost:8888/text/foo
+    HTTP/1.1 200 OK
+    Content-Length: 9
+    Etag: "b63729aa7fa0e438eed735880951dcc21d733676"
+    Content-Type: text/plain
 
-	foo=bar
+    foo=bar
 
 Delete:
 
-	$ curl -D - -X DELETE http://localhost:8888/text/foo
-	HTTP/1.1 200 OK
-	Content-Length: 11
-	Content-Type: text/plain
+    $ curl -D - -X DELETE http://localhost:8888/text/foo
+    HTTP/1.1 200 OK
+    Content-Length: 11
+    Content-Type: text/plain
 
-	DEL foo=1
+    DEL foo=1
 
 When redis is not running:
 
-	$ curl -D - http://localhost:8888/text/foo
-	HTTP/1.1 503 Service Unavailable
-	Content-Length: 89
-	Content-Type: text/html; charset=UTF-8
+    $ curl -D - http://localhost:8888/text/foo
+    HTTP/1.1 503 Service Unavailable
+    Content-Length: 89
+    Content-Type: text/html; charset=UTF-8
 
-	<html><title>503: Service Unavailable</title>
-	<body>503: Service Unavailable</body></html>
+    <html><title>503: Service Unavailable</title>
+    <body>503: Service Unavailable</body></html>
 
 
 ### Sharded Connections ###
@@ -381,38 +381,38 @@ the connection handler will raise the ``NotImplementedError`` exception.
 
 Simple example with automatic sharding of keys between two redis servers:
 
-	#!/usr/bin/env python
-	# coding: utf-8
+    #!/usr/bin/env python
+    # coding: utf-8
 
-	import txredisapi as redis
+    import txredisapi as redis
 
-	from twisted.internet import defer
-	from twisted.internet import reactor
-
-
-	@defer.inlineCallbacks
-	def main():
-	    rc = yield redis.ShardedConnection(["localhost:6379", "localhost:6380"])
-	    print rc
-	    print "Supported methods on sharded connections:", rc.ShardedMethods
-
-	    keys = []
-	    for x in xrange(100):
-		key = "foo%02d" % x
-		yield rc.set(key, "bar%02d" % x)
-		keys.append(key)
-
-	    # yey! mget is supported!
-	    response = yield rc.mget(keys)
-	    for val in response:
-		print val
-
-	    yield rc.disconnect()
+    from twisted.internet import defer
+    from twisted.internet import reactor
 
 
-	if __name__ == "__main__":
-	    main().addCallback(lambda ign: reactor.stop())
-	    reactor.run()
+    @defer.inlineCallbacks
+    def main():
+        rc = yield redis.ShardedConnection(["localhost:6379", "localhost:6380"])
+        print rc
+        print "Supported methods on sharded connections:", rc.ShardedMethods
+
+        keys = []
+        for x in xrange(100):
+            key = "foo%02d" % x
+            yield rc.set(key, "bar%02d" % x)
+            keys.append(key)
+
+        # yey! mget is supported!
+        response = yield rc.mget(keys)
+        for val in response:
+            print val
+
+        yield rc.disconnect()
+
+
+    if __name__ == "__main__":
+        main().addCallback(lambda ign: reactor.stop())
+        reactor.run()
 
 
 ### Transactions ###
@@ -431,51 +431,51 @@ Because ``exec`` is a reserved word in Python, the command to commit is
 
 Example:
 
-	#!/usr/bin/env python
-	# coding: utf-8
+    #!/usr/bin/env python
+    # coding: utf-8
 
-	import txredisapi as redis
+    import txredisapi as redis
 
-	from twisted.internet import defer
-	from twisted.internet import reactor
-
-
-	@defer.inlineCallbacks
-	def main():
-	    rc = yield redis.ConnectionPool()
-
-	    # Remove the keys
-	    yield rc.delete(["a1", "a2", "a3"])
-
-	    # Start transaction
-	    t = yield rc.multi()
-
-	    # These will return "QUEUED" - even t.get(key)
-	    yield t.set("a1", "1")
-	    yield t.set("a2", "2")
-	    yield t.set("a3", "3")
-	    yield t.get("a1")
-
-	    # Try to call get() while in a transaction.
-	    # It will fail if it's not a connection pool, or if all connections
-	    # in the pool are in a transaction.
-	    # Note that it's rc.get(), not the transaction object t.get().
-	    try:
-		v = yield rc.get("foo")
-		print "foo=", v
-	    except Exception, e:
-		print "can't get foo:", e
-
-	    # Commit, and get all responses from transaction.
-	    r = yield t.commit()
-	    print "commit=", repr(r)
-
-	    yield rc.disconnect()
+    from twisted.internet import defer
+    from twisted.internet import reactor
 
 
-	if __name__ == "__main__":
-	    main().addCallback(lambda ign: reactor.stop())
-	    reactor.run()
+    @defer.inlineCallbacks
+    def main():
+        rc = yield redis.ConnectionPool()
+
+        # Remove the keys
+        yield rc.delete(["a1", "a2", "a3"])
+
+        # Start transaction
+        t = yield rc.multi()
+
+        # These will return "QUEUED" - even t.get(key)
+        yield t.set("a1", "1")
+        yield t.set("a2", "2")
+        yield t.set("a3", "3")
+        yield t.get("a1")
+
+        # Try to call get() while in a transaction.
+        # It will fail if it's not a connection pool, or if all connections
+        # in the pool are in a transaction.
+        # Note that it's rc.get(), not the transaction object t.get().
+        try:
+            v = yield rc.get("foo")
+        print "foo=", v
+            except Exception, e:
+            print "can't get foo:", e
+
+        # Commit, and get all responses from transaction.
+        r = yield t.commit()
+        print "commit=", repr(r)
+
+        yield rc.disconnect()
+
+
+    if __name__ == "__main__":
+        main().addCallback(lambda ign: reactor.stop())
+        reactor.run()
 
 
 Calling ``commit`` will cause it to return a list with the return of all
@@ -487,25 +487,25 @@ normally return just an ``OK``.
 
 This is how to authenticate::
 
-	#!/usr/bin/env python
+    #!/usr/bin/env python
 
-	import txredisapi
-	from twisted.internet import defer
-	from twisted.internet import reactor
-
-
-	@defer.inlineCallbacks
-	def main():
-	    redis = yield txredisapi.Connection()
-	    yield redis.auth("foobared")
-	    yield redis.set("foo", "bar")
-	    print (yield redis.get("foo"))
-	    reactor.stop()
+    import txredisapi
+    from twisted.internet import defer
+    from twisted.internet import reactor
 
 
-	if __name__ == "__main__":
-	    main()
-	    reactor.run()
+    @defer.inlineCallbacks
+    def main():
+        redis = yield txredisapi.Connection()
+        yield redis.auth("foobared")
+        yield redis.set("foo", "bar")
+        print (yield redis.get("foo"))
+        reactor.stop()
+
+
+    if __name__ == "__main__":
+        main()
+        reactor.run()
 
 If the password does not match, most of the commands will return nothing,
 except for ``get``, which returns ``operation not permitted``.
