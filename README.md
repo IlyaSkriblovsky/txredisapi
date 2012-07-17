@@ -540,3 +540,7 @@ Thanks to (in no particular order):
 - Jeremy Archer
   
   - Minor bugfixes.
+
+- Christoph Tavan (@ctavan)
+
+  - Idea and test case for nested multi bulk replies, minor command enhancements.
