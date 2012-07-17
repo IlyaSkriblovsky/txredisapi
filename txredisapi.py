@@ -385,10 +385,11 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("EXISTS", key)
 
-    def delete(self, *keys):
+    def delete(self, keys, *args):
         """
         Delete one or more keys
         """
+        keys = list_or_args("mget", keys, args)
         return self.execute_command("DEL", *keys)
 
     def type(self, key):
