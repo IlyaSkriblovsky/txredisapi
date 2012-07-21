@@ -1,5 +1,7 @@
 *.swp
 *.pyc
 build
-_trial_temp/
+_trial_temp
 tmp
+dist
+txredisapi.egg-info
