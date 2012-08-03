@@ -1226,11 +1226,13 @@ class RedisProtocol(basic.LineReceiver, policies.TimeoutMixin):
 
     # slaveof is missing
 
+
 class MonitorProtocol(RedisProtocol):
     """
-    monitor command has the same behavior as subscribe: takes the whole connection.
-    take care with the performance impact:
-    http://redis.io/commands/monitor
+    monitor has the same behavior as subscribe: hold the connection until
+    something happens.
+
+    take care with the performance impact: http://redis.io/commands/monitor
     """
 
     def connectionLost(self, why):
@@ -1247,6 +1249,7 @@ class MonitorProtocol(RedisProtocol):
 
     def stop(self):
         self.transport.loseConnection()
+
 
 class SubscriberProtocol(RedisProtocol):
     def connectionLost(self, why):
@@ -1288,10 +1291,12 @@ class SubscriberFactory(protocol.ReconnectingClientFactory):
     continueTrying = True
     protocol = SubscriberProtocol
 
+
 class MonitorFactory(protocol.ReconnectingClientFactory):
     maxDelay = 120
     continueTrying = True
     protocol = MonitorProtocol
+
 
 class ConnectionHandler(object):
     def __init__(self, factory):
@@ -1418,7 +1423,7 @@ class HashRing(object):
     def add_node(self, node):
         self.nodes.append(node)
         for x in xrange(self.replicas):
-            crckey = zlib.crc32("%s:%d" % (node, x))
+            crckey = zlib.crc32("%s:%d" % (node._factory.uuid, x))
             self.ring[crckey] = node
             self.sorted_keys.append(crckey)
 
@@ -1556,7 +1561,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     maxDelay = 10
     protocol = RedisProtocol
 
-    def __init__(self, dbid, poolsize, isLazy=False,
+    def __init__(self, uuid, dbid, poolsize, isLazy=False,
                  handler=ConnectionHandler):
         if not isinstance(poolsize, int):
             raise ValueError("Redis poolsize must be an integer, not %s" %
@@ -1566,6 +1571,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             raise ValueError("Redis dbid must be an integer, not %s" %
                              repr(dbid))
 
+        self.uuid = uuid
         self.dbid = dbid
         self.poolsize = poolsize
         self.isLazy = isLazy
@@ -1614,7 +1620,8 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
 
 def makeConnection(host, port, dbid, poolsize, reconnect, isLazy):
-    factory = RedisFactory(dbid, poolsize, isLazy, ConnectionHandler)
+    uuid = "%s:%s" % (host, port)
+    factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler)
     factory.continueTrying = reconnect
     for x in xrange(poolsize):
         reactor.connectTCP(host, port, factory)
@@ -1684,7 +1691,7 @@ def lazyShardedConnectionPool(hosts, dbid=None, poolsize=10, reconnect=True):
 
 
 def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy):
-    factory = RedisFactory(dbid, poolsize, isLazy, UnixConnectionHandler)
+    factory = RedisFactory(path, dbid, poolsize, isLazy, UnixConnectionHandler)
     factory.continueTrying = reconnect
     for x in xrange(poolsize):
         reactor.connectUNIX(path, factory)
@@ -1760,4 +1767,4 @@ __all__ = [
 ]
 
 __author__ = "Alexandre Fiori"
-__version__ = version = "0.6"
+__version__ = version = "0.8"
