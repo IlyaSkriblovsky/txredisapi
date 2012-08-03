@@ -1,7 +1,7 @@
 txredisapi
 ==========
 
-*For the latest source code, see <http://github.com/fiorix/txredisapi>.*
+*For the latest source code, see <http://github.com/fiorix/txredisapi>*
 
 
 ``txredisapi`` is a non-blocking client driver for the [redis](http://redis.io)
