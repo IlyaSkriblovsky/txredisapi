@@ -1625,6 +1625,7 @@ class ShardedUnixConnectionHandler(ShardedConnectionHandler):
 class RedisFactory(protocol.ReconnectingClientFactory):
     maxDelay = 10
     protocol = RedisProtocol
+    noise = False
 
     def __init__(self, uuid, dbid, poolsize, isLazy=False,
                  handler=ConnectionHandler):
