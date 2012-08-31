@@ -1200,23 +1200,19 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     # That object must be used for further interactions within
     # the transaction. At the end, either exec() or discard()
     # must be executed.
-    def multi(self, keys=None):
-        self.inTransaction = True
-        if keys:
-            if isinstance(keys, (str, unicode)):
-                keys = [keys]
-            d = defer.Deferred()
-            self.execute_command("WATCH", *keys).addCallback(
-                self._watch_added, d)
-        else:
-            d = self.execute_command("MULTI").addCallback(self._multi_started)
-        return d
+    def watch(self, keys):
+        if isinstance(keys, (str, unicode)):
+            keys = [keys]
+        return self.execute_command("WATCH", *keys).addCallback(self._watch_added)
 
-    def _watch_added(self, response, d):
+    def _watch_added(self, response):
         if response != 'OK':
-            d.errback(RedisError('Invalid WATCH response: %s' % response))
-        self.execute_command("MULTI").addCallback(
-            self._multi_started).chainDeferred(d)
+            raise RedisError('Invalid WATCH response: %s' % response)
+        return self
+
+    def multi(self):
+        self.inTransaction = True
+        return self.execute_command("MULTI").addCallback(self._multi_started)
 
     def _multi_started(self, response):
         if response != 'OK':
