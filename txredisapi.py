@@ -1327,6 +1327,8 @@ class SubscriberProtocol(RedisProtocol):
             else:
                 self.replyQueue.put(reply[-3])
                 self.messageReceived(*reply[-3:])
+        elif isinstance(reply, Exception):
+            self.replyQueue.put(reply)
 
     def subscribe(self, channels):
         if isinstance(channels, (str, unicode)):
