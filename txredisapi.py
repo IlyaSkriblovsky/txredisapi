@@ -223,7 +223,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.connected = 0
         self.factory.delConnection(self)
         LineReceiver.connectionLost(self, why)
-        while self.replyQueue.pending:
+        while self.replyQueue.waiting:
             self.replyReceived(ConnectionError("Lost connection"))
 
     def lineReceived(self, line):
