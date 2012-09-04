@@ -1325,7 +1325,7 @@ class SubscriberProtocol(RedisProtocol):
             if reply[-3] == u"message":
                 self.messageReceived(None, *reply[-2:])
             else:
-                self.replyQueue.put(reply[-3])
+                self.replyQueue.put(reply[-3:])
                 self.messageReceived(*reply[-3:])
         elif isinstance(reply, Exception):
             self.replyQueue.put(reply)
