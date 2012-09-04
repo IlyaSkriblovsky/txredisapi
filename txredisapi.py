@@ -1303,9 +1303,6 @@ class MonitorProtocol(RedisProtocol):
     take care with the performance impact: http://redis.io/commands/monitor
     """
 
-    def connectionLost(self, why):
-        pass
-
     def messageReceived(self, message):
         pass
 
@@ -1320,9 +1317,6 @@ class MonitorProtocol(RedisProtocol):
 
 
 class SubscriberProtocol(RedisProtocol):
-    def connectionLost(self, why):
-        pass
-
     def messageReceived(self, pattern, channel, message):
         pass
 
@@ -1353,19 +1347,6 @@ class SubscriberProtocol(RedisProtocol):
         if isinstance(patterns, (str, unicode)):
             patterns = [patterns]
         return self.execute_command("PUNSUBSCRIBE", *patterns)
-
-
-class SubscriberFactory(protocol.ReconnectingClientFactory):
-    maxDelay = 120
-    continueTrying = True
-    protocol = SubscriberProtocol
-
-
-class MonitorFactory(protocol.ReconnectingClientFactory):
-    maxDelay = 120
-    continueTrying = True
-    protocol = MonitorProtocol
-
 
 class ConnectionHandler(object):
     def __init__(self, factory):
@@ -1687,6 +1668,19 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
         raise RedisError("In transaction")
 
+class SubscriberFactory(RedisFactory):
+    protocol = SubscriberProtocol
+
+    def __init__(self, isLazy=False, handler=ConnectionHandler):
+        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
+                              handler=handler)
+
+class MonitorFactory(RedisFactory):
+    protocol = MonitorProtocol
+
+    def __init__(self, isLazy=False, handler=ConnectionHandler):
+        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
+                              handler=handler)
 
 def makeConnection(host, port, dbid, poolsize, reconnect, isLazy):
     uuid = "%s:%s" % (host, port)
