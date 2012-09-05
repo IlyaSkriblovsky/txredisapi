@@ -223,7 +223,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.connected = 0
         self.factory.delConnection(self)
         LineReceiver.connectionLost(self, why)
-        while self.replyQueue.pending:
+        while self.replyQueue.waiting:
             self.replyReceived(ConnectionError("Lost connection"))
 
     def lineReceived(self, line):
@@ -1303,9 +1303,6 @@ class MonitorProtocol(RedisProtocol):
     take care with the performance impact: http://redis.io/commands/monitor
     """
 
-    def connectionLost(self, why):
-        pass
-
     def messageReceived(self, message):
         pass
 
@@ -1320,9 +1317,6 @@ class MonitorProtocol(RedisProtocol):
 
 
 class SubscriberProtocol(RedisProtocol):
-    def connectionLost(self, why):
-        pass
-
     def messageReceived(self, pattern, channel, message):
         pass
 
@@ -1331,8 +1325,10 @@ class SubscriberProtocol(RedisProtocol):
             if reply[-3] == u"message":
                 self.messageReceived(None, *reply[-2:])
             else:
-                self.replyQueue.put(reply[-3])
+                self.replyQueue.put(reply[-3:])
                 self.messageReceived(*reply[-3:])
+        elif isinstance(reply, Exception):
+            self.replyQueue.put(reply)
 
     def subscribe(self, channels):
         if isinstance(channels, (str, unicode)):
@@ -1353,19 +1349,6 @@ class SubscriberProtocol(RedisProtocol):
         if isinstance(patterns, (str, unicode)):
             patterns = [patterns]
         return self.execute_command("PUNSUBSCRIBE", *patterns)
-
-
-class SubscriberFactory(protocol.ReconnectingClientFactory):
-    maxDelay = 120
-    continueTrying = True
-    protocol = SubscriberProtocol
-
-
-class MonitorFactory(protocol.ReconnectingClientFactory):
-    maxDelay = 120
-    continueTrying = True
-    protocol = MonitorProtocol
-
 
 class ConnectionHandler(object):
     def __init__(self, factory):
@@ -1687,6 +1670,19 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
         raise RedisError("In transaction")
 
+class SubscriberFactory(RedisFactory):
+    protocol = SubscriberProtocol
+
+    def __init__(self, isLazy=False, handler=ConnectionHandler):
+        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
+                              handler=handler)
+
+class MonitorFactory(RedisFactory):
+    protocol = MonitorProtocol
+
+    def __init__(self, isLazy=False, handler=ConnectionHandler):
+        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
+                              handler=handler)
 
 def makeConnection(host, port, dbid, poolsize, reconnect, isLazy):
     uuid = "%s:%s" % (host, port)
