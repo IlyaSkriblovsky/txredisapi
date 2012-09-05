@@ -24,11 +24,11 @@ class TestSubscriberProtocol(unittest.TestCase):
         conn = self.db._factory.getConnection
 
         # This should return a deferred from the replyQueue; then
-        # abortConnection will make it do an errback with a
+        # loseConnection will make it do an errback with a
         # ConnectionError instance
         d = self.db.subscribe('foo')
 
-        conn.transport.abortConnection()
+        conn.transport.loseConnection()
         try:
             yield d
             self.fail()
