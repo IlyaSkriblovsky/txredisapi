@@ -972,7 +972,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
             pieces = [cmd, key, min, max, "WITHSCORES"]
         else:
             pieces = [cmd, key, min, max]
-        if offset and count:
+        if offset is not None and count is not None:
             pieces.extend(("LIMIT", offset, count))
         r = self.execute_command(*pieces)
         if withscores:
