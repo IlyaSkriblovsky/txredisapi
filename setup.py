@@ -18,7 +18,7 @@ import setuptools
 
 setuptools.setup(
     name="txredisapi",
-    version="0.8",
+    version="0.9",
     py_modules=["txredisapi"],
     install_requires=["twisted"],
     author="Alexandre Fiori",
