@@ -48,7 +48,7 @@ Try the following:
     $ python
     >>> import cyclone.redis
     >>> cyclone.redis.version
-    '0.8'
+    '0.9'
 
 However, if you really really insist in installing, get it from pypi:
 
@@ -538,7 +538,7 @@ Thanks to (in no particular order):
   - Contributed with test cases, and other ideas like support for travis-ci
 
 - Jeremy Archer
-  
+
   - Minor bugfixes.
 
 - Christoph Tavan (@ctavan)
