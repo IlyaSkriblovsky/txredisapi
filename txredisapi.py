@@ -531,7 +531,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     def flush(self, all_dbs=False):
         warnings.warn(DeprecationWarning(
             "redis.flush() has been deprecated, "
-            "use redis.flush() or redis.flushall() instead"))
+            "use redis.flushdb() or redis.flushall() instead"))
         return all_dbs and self.flushall() or self.flushdb()
 
     def flushdb(self):
