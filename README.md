@@ -1,6 +1,9 @@
 txredisapi
 ==========
 
+[![Build Status](https://secure.travis-ci.org/fiorix/txredisapi.png)](http://travis-ci.org/fiorix/txredisapi)
+
+
 *For the latest source code, see <http://github.com/fiorix/txredisapi>*
 
 
@@ -62,8 +65,6 @@ are available. Just start redis, and run ``trial ./tests``.
 If *unix sockets* are disabled in redis, it will silently skip those tests.
 
 Make sure you run `redis-cli flushall` to clean up redis after the tests.
-
-[![Build Status](https://secure.travis-ci.org/fiorix/txredisapi.png)](http://travis-ci.org/fiorix/txredisapi)
 
 Usage
 -----
