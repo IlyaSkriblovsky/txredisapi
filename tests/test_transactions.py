@@ -30,12 +30,41 @@ class TestRedisConnections(unittest.TestCase):
         rapi = yield txredisapi.Connection(redis_host, redis_port)
         
         # test set() operation
-        transaction = yield rapi.multi()
-        print "oi" 
+        transaction = yield rapi.multi("txredisapi:test_transaction")
+        self.assertTrue(transaction.inTransaction)
         for key, value in (("txredisapi:test_transaction", "foo"), ("txredisapi:test_transaction", "bar")):
             yield transaction.set(key, value)
         yield transaction.commit()
+        self.assertFalse(transaction.inTransaction)
         result = yield rapi.get("txredisapi:test_transaction")
         self.assertEqual(result, "bar")
+
+        yield rapi.disconnect()
+
+    @defer.inlineCallbacks
+    def testRedisWithOnlyWatchUnwatch(self):
+        rapi = yield txredisapi.Connection(redis_host, redis_port)
+
+        k = "txredisapi:testRedisWithOnlyWatchAndUnwatch"
+        tx = yield rapi.watch(k)
+        self.assertTrue(tx.inTransaction)
+        yield tx.set(k, "bar")
+        v = yield tx.get(k)
+        self.assertEqual("bar", v)
+        yield tx.unwatch()
+        self.assertFalse(tx.inTransaction)
+
+        yield rapi.disconnect()
+
+    @defer.inlineCallbacks
+    def testRedisWithWatchAndMulti(self):
+        rapi = yield txredisapi.Connection(redis_host, redis_port)
+
+        tx = yield rapi.watch("txredisapi:testRedisWithWatchAndMulti")
+        yield tx.multi()
+        yield tx.unwatch()
+        self.assertTrue(tx.inTransaction)
+        yield tx.commit()
+        self.assertFalse(tx.inTransaction)
 
         yield rapi.disconnect()

@@ -197,6 +197,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         self.transactions = 0
         self.inTransaction = False
+        self.unwatch_cc = lambda: ()
 
     @defer.inlineCallbacks
     def connectionMade(self):
@@ -1195,32 +1196,40 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         return self.execute_command("SORT", *pieces)
 
+    def _clear_txstate(self):
+        self.inTransaction = self.transactions != 0
+
+    def watch(self, keys):
+        self.inTransaction = True
+        self.unwatch_cc = self._clear_txstate
+        if isinstance(keys, (str, unicode)):
+            keys = [keys]
+        d = self.execute_command("WATCH", *keys).addCallback(self._tx_started)
+        return d
+
+    def unwatch(self):
+        self.unwatch_cc()
+        return self.execute_command("UNWATCH")
+
     # Transactions
     # multi() will return a deferred with a "connection" object
     # That object must be used for further interactions within
     # the transaction. At the end, either exec() or discard()
     # must be executed.
     def multi(self, keys=None):
-        self.inTransaction = True
-        if keys:
-            if isinstance(keys, (str, unicode)):
-                keys = [keys]
-            d = defer.Deferred()
-            self.execute_command("WATCH", *keys).addCallback(
-                self._watch_added, d)
+        self.unwatch_cc = lambda: ()
+        if keys is not None:
+            d = self.watch(keys)
+            d.addCallback(lambda _: self.execute_command("MULTI"))
         else:
-            d = self.execute_command("MULTI").addCallback(self._multi_started)
+            self.inTransaction = True
+            d = self.execute_command("MULTI")
+        d.addCallback(self._tx_started)
         return d
 
-    def _watch_added(self, response, d):
+    def _tx_started(self, response):
         if response != 'OK':
-            d.errback(RedisError('Invalid WATCH response: %s' % response))
-        self.execute_command("MULTI").addCallback(
-            self._multi_started).chainDeferred(d)
-
-    def _multi_started(self, response):
-        if response != 'OK':
-            raise RedisError('Invalid MULTI response: %s' % response)
+            raise RedisError('Invalid response: %s' % response)
         return self
 
     def _commit_check(self, response):
