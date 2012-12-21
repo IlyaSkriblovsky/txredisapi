@@ -1197,11 +1197,12 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         return self.execute_command("SORT", *pieces)
 
     def _clear_txstate(self):
-        self.inTransaction = self.transactions != 0
+        self.inTransaction = False
 
     def watch(self, keys):
-        self.inTransaction = True
-        self.unwatch_cc = self._clear_txstate
+        if not self.inTransaction:
+            self.inTransaction = True
+            self.unwatch_cc = self._clear_txstate
         if isinstance(keys, (str, unicode)):
             keys = [keys]
         d = self.execute_command("WATCH", *keys).addCallback(self._tx_started)
@@ -1217,12 +1218,12 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     # the transaction. At the end, either exec() or discard()
     # must be executed.
     def multi(self, keys=None):
+        self.inTransaction = True
         self.unwatch_cc = lambda: ()
         if keys is not None:
             d = self.watch(keys)
             d.addCallback(lambda _: self.execute_command("MULTI"))
         else:
-            self.inTransaction = True
             d = self.execute_command("MULTI")
         d.addCallback(self._tx_started)
         return d
