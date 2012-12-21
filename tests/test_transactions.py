@@ -68,3 +68,61 @@ class TestRedisConnections(unittest.TestCase):
         self.assertFalse(tx.inTransaction)
 
         yield rapi.disconnect()
+
+    # some sort of probabilistic test
+    @defer.inlineCallbacks
+    def testWatchAndPools_1(self):
+        rapi = yield txredisapi.ConnectionPool(redis_host, redis_port, poolsize=2, reconnect=False)
+        tx1 = yield rapi.watch("foobar")
+        tx2 = yield tx1.watch("foobaz")
+        self.assertTrue(id(tx1) == id(tx2))
+        yield rapi.disconnect()
+
+    # some sort of probabilistic test
+    @defer.inlineCallbacks
+    def testWatchAndPools_2(self):
+        rapi = yield txredisapi.ConnectionPool(redis_host, redis_port, poolsize=2, reconnect=False)
+        tx1 = yield rapi.watch("foobar")
+        tx2 = yield rapi.watch("foobaz")
+        self.assertTrue(id(tx1) != id(tx2))
+        yield rapi.disconnect()
+
+    @defer.inlineCallbacks
+    def testWatchEdgeCase_1(self):
+        rapi = yield txredisapi.Connection(redis_host, redis_port)
+
+        tx = yield rapi.multi("foobar")
+        yield tx.unwatch()
+        self.assertTrue(tx.inTransaction)
+        yield tx.discard()
+        self.assertFalse(tx.inTransaction)
+
+        yield rapi.disconnect()
+
+    @defer.inlineCallbacks
+    def testWatchEdgeCase_2(self):
+        rapi = yield txredisapi.Connection(redis_host, redis_port)
+
+        tx = yield rapi.multi()
+        try:
+            yield tx.watch("foobar")
+        except txredisapi.ResponseError:
+            pass
+        yield tx.unwatch()
+        self.assertTrue(tx.inTransaction)
+        yield tx.discard()
+        self.assertFalse(tx.inTransaction)
+        yield rapi.disconnect()
+
+    @defer.inlineCallbacks
+    def testWatchEdgeCase_3(self):
+        rapi = yield txredisapi.Connection(redis_host, redis_port)
+
+        tx = yield rapi.watch("foobar")
+        tx = yield tx.multi("foobaz")
+        yield tx.unwatch()
+        self.assertTrue(tx.inTransaction)
+        yield tx.discard()
+        self.assertFalse(tx.inTransaction)
+
+        yield rapi.disconnect()
