@@ -51,7 +51,7 @@ Try the following:
     $ python
     >>> import cyclone.redis
     >>> cyclone.redis.version
-    '0.9'
+    '1.0'
 
 However, if you really really insist in installing, get it from pypi:
 

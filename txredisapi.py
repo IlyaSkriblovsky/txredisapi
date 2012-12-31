@@ -1961,4 +1961,4 @@ __all__ = [
 ]
 
 __author__ = "Alexandre Fiori"
-__version__ = version = "0.9"
+__version__ = version = "1.0"
