@@ -665,13 +665,19 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         Append an element to the tail of the List value at key
         """
-        return self.execute_command("RPUSH", key, value)
+        if isinstance(value, tuple) or isinstance(value, list):
+            return self.execute_command("RPUSH", key, *value)
+        else:
+            return self.execute_command("RPUSH", key, value)
 
     def lpush(self, key, value):
         """
         Append an element to the head of the List value at key
         """
-        return self.execute_command("LPUSH", key, value)
+        if isinstance(value, tuple) or isinstance(value, list):
+            return self.execute_command("LPUSH", key, *value)
+        else:
+            return self.execute_command("LPUSH", key, value)
 
     def llen(self, key):
         """
