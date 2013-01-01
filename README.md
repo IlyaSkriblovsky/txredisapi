@@ -51,7 +51,7 @@ Try the following:
     $ python
     >>> import cyclone.redis
     >>> cyclone.redis.version
-    '0.9'
+    '1.0'
 
 However, if you really really insist in installing, get it from pypi:
 
@@ -423,6 +423,7 @@ But they work pretty good on normal or lazy connections, and connection pools.
 
 NOTE: redis uses the following methods for transactions:
 
+- WATCH: synchronization
 - MULTI: start the transaction
 - EXEC: commit the transaction
 - DISCARD: you got it.
@@ -477,6 +478,55 @@ Example:
     if __name__ == "__main__":
         main().addCallback(lambda ign: reactor.stop())
         reactor.run()
+
+A "COUNTER" example, using WATCH/MULTI:
+
+     #!/usr/bin/env python
+     # coding: utf-8
+          
+     import txredisapi as redis
+          
+     from twisted.internet import defer
+     from twisted.internet import reactor
+          
+          
+     @defer.inlineCallbacks
+     def main():
+         rc = yield redis.ConnectionPool()
+          
+         # Reset keys
+         yield rc.set("a1", 0)
+          
+         # Synchronize and start transaction
+         t = yield rc.watch("a1")
+          
+         # Load previous value
+         a1 = yield t.get("a1")
+          
+         # start the transactional pipeline
+         yield t.multi()
+          
+         # modify and retrieve the new a1 value
+         yield t.set("a1", a1 + 1)
+         yield t.get("a1")
+          
+         print "simulating concurrency, this will abort the transaction"
+         yield rc.set("a1", 2)
+          
+         try:
+             r = yield t.commit()
+             print "commit=", repr(r)
+         except redis.WatchError, e:
+             a1 = yield rc.get("a1")
+             print "transaction has failed."
+             print "current a1 value: ", a1
+          
+         yield rc.disconnect()
+          
+          
+     if __name__ == "__main__":
+         main().addCallback(lambda ign: reactor.stop())
+         reactor.run()
 
 
 Calling ``commit`` will cause it to return a list with the return of all
@@ -545,3 +595,7 @@ Thanks to (in no particular order):
 - Christoph Tavan (@ctavan)
 
   - Idea and test case for nested multi bulk replies, minor command enhancements.
+
+- dgvncsz0f
+
+  - WATCH/UNWATCH commands

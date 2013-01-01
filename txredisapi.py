@@ -1,5 +1,6 @@
 # coding: utf-8
 # Copyright 2009 Alexandre Fiori
+# https://github.com/fiorix/txredisapi
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +31,7 @@ import types
 import warnings
 import zlib
 import string
+import hashlib
 
 from twisted.internet import defer
 from twisted.internet import protocol
@@ -38,6 +40,7 @@ from twisted.internet import task
 from twisted.protocols import basic
 from twisted.protocols import policies
 from twisted.python import log
+from twisted.python.failure import Failure
 
 
 class RedisError(Exception):
@@ -49,6 +52,14 @@ class ConnectionError(RedisError):
 
 
 class ResponseError(RedisError):
+    pass
+
+
+class ScriptDoesNotExist(ResponseError):
+    pass
+
+
+class NoScriptRunning(ResponseError):
     pass
 
 
@@ -199,6 +210,8 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.inTransaction = False
         self.unwatch_cc = lambda: ()
 
+        self.script_hashes = set()
+
     @defer.inlineCallbacks
     def connectionMade(self):
         if self.factory.dbid is not None:
@@ -222,6 +235,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
 
     def connectionLost(self, why):
         self.connected = 0
+        self.script_hashes.clear()
         self.factory.delConnection(self)
         LineReceiver.connectionLost(self, why)
         while self.replyQueue.waiting:
@@ -291,7 +305,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
                 reply = int(data)
             except ValueError:
                 reply = InvalidResponse(
-                        "Cannot convert data '%s' to integer" % data)
+                    "Cannot convert data '%s' to integer" % data)
 
             if self.multi_bulk.pending:
                 self.handleMultiBulkElement(reply)
@@ -1203,11 +1217,12 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         return self.execute_command("SORT", *pieces)
 
     def _clear_txstate(self):
-        self.inTransaction = self.transactions != 0
+        self.inTransaction = False
 
     def watch(self, keys):
-        self.inTransaction = True
-        self.unwatch_cc = self._clear_txstate
+        if not self.inTransaction:
+            self.inTransaction = True
+            self.unwatch_cc = self._clear_txstate
         if isinstance(keys, (str, unicode)):
             keys = [keys]
         d = self.execute_command("WATCH", *keys).addCallback(self._tx_started)
@@ -1223,12 +1238,12 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     # the transaction. At the end, either exec() or discard()
     # must be executed.
     def multi(self, keys=None):
+        self.inTransaction = True
         self.unwatch_cc = lambda: ()
         if keys is not None:
             d = self.watch(keys)
             d.addCallback(lambda _: self.execute_command("MULTI"))
         else:
-            self.inTransaction = True
             d = self.execute_command("MULTI")
         d.addCallback(self._tx_started)
         return d
@@ -1300,14 +1315,116 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("BGREWRITEAOF")
 
+    def _process_info(self, r):
+        keypairs = [x for x in r.split('\r\n') if
+                    u':' in x and not x.startswith(u'#')]
+        d = {}
+        for kv in keypairs:
+            k, v = kv.split(u':')
+            d[k] = v
+        return d
+
     # Remote server control commands
-    def info(self):
+    def info(self, type=None):
         """
         Provide information and statistics about the server
         """
-        return self.execute_command("INFO")
+        if type is None:
+            return self.execute_command("INFO")
+        else:
+            r = self.execute_command("INFO", type)
+            return r.addCallback(self._process_info)
 
     # slaveof is missing
+
+    # Redis 2.6 scripting commands
+    def _eval(self, script, script_hash, **kwargs):
+        n = len(kwargs)
+        if n == 0:
+            args = ()
+        else:
+            keys, values = zip(*kwargs.items())
+            args = keys + values
+        r = self.execute_command("EVAL", script, n, *args)
+        if script_hash in self.script_hashes:
+            return r
+        return r.addCallback(self._eval_success, script_hash)
+
+    def _eval_success(self, r, script_hash):
+        self.script_hashes.add(script_hash)
+        return r
+
+    def _evalsha_failed(self, err, script, script_hash, **kwargs):
+        if err.check(ScriptDoesNotExist):
+            return self._eval(script, script_hash, **kwargs)
+        return err
+
+    def eval(self, script, **kwargs):
+        h = hashlib.sha1(script).hexdigest()
+        if h in self.script_hashes:
+            return self.evalsha(h, **kwargs).addErrback(
+                self._evalsha_failed, script, h, **kwargs)
+        return self._eval(script, h, **kwargs)
+
+    def _evalsha_errback(self, err, script_hash):
+        if err.check(ResponseError):
+            if err.value.args[0].startswith(u'NOSCRIPT'):
+                if script_hash in self.script_hashes:
+                    self.script_hashes.remove(script_hash)
+                raise ScriptDoesNotExist("No script matching hash: %s found" %
+                                         script_hash)
+        return err
+
+    def evalsha(self, sha1_hash, **kwargs):
+        n = len(kwargs)
+        if n == 0:
+            args = ()
+        else:
+            keys, values = zip(*kwargs.items())
+            args = keys + values
+        r = self.execute_command("EVALSHA",
+                                 sha1_hash, n,
+                                 *args).addErrback(self._evalsha_errback,
+                                                   sha1_hash)
+        if sha1_hash not in self.script_hashes:
+            r.addCallback(self._eval_success, sha1_hash)
+        return r
+
+    def _script_exists_success(self, r):
+        l = [bool(x) for x in r]
+        if len(l) == 1:
+            return l[0]
+        else:
+            return l
+
+    def script_exists(self, *hashes):
+        return self.execute_command("SCRIPT", "EXISTS",
+                                    post_proc=self._script_exists_success,
+                                    *hashes)
+
+    def _script_flush_success(self, r):
+        self.script_hashes.clear()
+        return r
+
+    def script_flush(self):
+        return self.execute_command("SCRIPT", "FLUSH").addCallback(
+            self._script_flush_success)
+
+    def _handle_script_kill(self, r):
+        if isinstance(r, Failure):
+            if r.check(ResponseError):
+                if r.value.args[0].startswith(u'NOTBUSY'):
+                    raise NoScriptRunning("No script running")
+        else:
+            pass
+        return r
+
+    def script_kill(self):
+        return self.execute_command("SCRIPT",
+                                    "KILL").addBoth(self._handle_script_kill)
+
+    def script_load(self, script):
+        return self.execute_command("SCRIPT",  "LOAD", script)
 
 
 class MonitorProtocol(RedisProtocol):
@@ -1364,6 +1481,7 @@ class SubscriberProtocol(RedisProtocol):
         if isinstance(patterns, (str, unicode)):
             patterns = [patterns]
         return self.execute_command("PUNSUBSCRIBE", *patterns)
+
 
 class ConnectionHandler(object):
     def __init__(self, factory):
@@ -1685,6 +1803,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
         raise RedisError("In transaction")
 
+
 class SubscriberFactory(RedisFactory):
     protocol = SubscriberProtocol
 
@@ -1692,12 +1811,14 @@ class SubscriberFactory(RedisFactory):
         RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
                               handler=handler)
 
+
 class MonitorFactory(RedisFactory):
     protocol = MonitorProtocol
 
     def __init__(self, isLazy=False, handler=ConnectionHandler):
         RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
                               handler=handler)
+
 
 def makeConnection(host, port, dbid, poolsize, reconnect, isLazy):
     uuid = "%s:%s" % (host, port)
@@ -1847,4 +1968,4 @@ __all__ = [
 ]
 
 __author__ = "Alexandre Fiori"
-__version__ = version = "0.9"
+__version__ = version = "1.0"
