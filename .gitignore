@@ -5,3 +5,5 @@ _trial_temp
 tmp
 dist
 txredisapi.egg-info
+.idea/
+atlassian-ide-plugin.xml
