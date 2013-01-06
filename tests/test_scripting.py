@@ -23,51 +23,25 @@ from twisted.trial import unittest
 from twisted.internet import reactor
 from twisted.python import failure
 
-redis_host = "localhost"
-redis_port = 6379
+from .mixins import Redis26CheckMixin, REDIS_HOST, REDIS_PORT
 
 
-class TestScripting(unittest.TestCase):
+class TestScripting(unittest.TestCase, Redis26CheckMixin):
     _SCRIPT = "return {KEYS[1],KEYS[2],ARGV[1],ARGV[2]}"  # From redis example
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.db = yield redis.Connection(redis_host, redis_port,
+        self.db = yield redis.Connection(REDIS_HOST, REDIS_PORT,
                                          reconnect=False)
         self.db1 = None
         self.redis_2_6 = yield self.is_redis_2_6()
-        d = yield self.db.info("server")
-        self.redis_version = d[u'redis_version']
         yield self.db.script_flush()
-
-    def _skipCheck(self):
-        if not self.redis_2_6:
-            skipMsg = "Redis version < 2.6 (found version: %s)"
-            raise unittest.SkipTest(skipMsg % self.redis_version)
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.db.disconnect()
         if self.db1 is not None:
             yield self.db1.disconnect()
-
-    @defer.inlineCallbacks
-    def is_redis_2_6(self):
-        """
-        Returns true if the Redis version >= 2.6
-        """
-        d = yield self.db.info("server")
-        if u'redis_version' not in d:
-            defer.returnValue(False)
-        ver = d[u'redis_version']
-        ver_list = [int(x) for x in ver.split(u'.')]
-        if len(ver_list) < 2:
-            defer.returnValue(False)
-        if ver_list[0] > 2:
-            defer.returnValue(True)
-        elif ver_list[0] == 2 and ver_list[1] >= 6:
-            defer.returnValue(True)
-        defer.returnValue(False)
 
     @defer.inlineCallbacks
     def test_eval(self):
@@ -174,7 +148,7 @@ class TestScripting(unittest.TestCase):
         # Run an infinite loop script from one connection
         # and kill it from another.
         inf_loop = "while 1 do end"
-        self.db1 = yield redis.Connection(redis_host, redis_port,
+        self.db1 = yield redis.Connection(REDIS_HOST, REDIS_PORT,
                                           reconnect=False)
         eval_deferred = self.db1.eval(inf_loop)
         reactor.iterate()
