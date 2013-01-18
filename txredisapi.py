@@ -2018,4 +2018,4 @@ __all__ = [
 ]
 
 __author__ = "Alexandre Fiori"
-__version__ = version = "1.0"
+__version__ = version = "1.1"
