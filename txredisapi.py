@@ -1388,14 +1388,10 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     # slaveof is missing
 
     # Redis 2.6 scripting commands
-    def _eval(self, script, script_hash, **kwargs):
-        n = len(kwargs)
-        if n == 0:
-            args = ()
-        else:
-            keys, values = zip(*kwargs.items())
-            args = keys + values
-        r = self.execute_command("EVAL", script, n, *args)
+    def _eval(self, script, script_hash, keys, args):
+        n = len(keys)
+        keys_and_args = tuple(keys) + tuple(args)
+        r = self.execute_command("EVAL", script, n, *keys_and_args)
         if script_hash in self.script_hashes:
             return r
         return r.addCallback(self._eval_success, script_hash)
@@ -1404,17 +1400,17 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.script_hashes.add(script_hash)
         return r
 
-    def _evalsha_failed(self, err, script, script_hash, **kwargs):
+    def _evalsha_failed(self, err, script, script_hash, keys, args):
         if err.check(ScriptDoesNotExist):
-            return self._eval(script, script_hash, **kwargs)
+            return self._eval(script, script_hash, keys, args)
         return err
 
-    def eval(self, script, **kwargs):
+    def eval(self, script, keys=[], args=[]):
         h = hashlib.sha1(script).hexdigest()
         if h in self.script_hashes:
-            return self.evalsha(h, **kwargs).addErrback(
-                self._evalsha_failed, script, h, **kwargs)
-        return self._eval(script, h, **kwargs)
+            return self.evalsha(h, keys, args).addErrback(
+                self._evalsha_failed, script, h, keys, args)
+        return self._eval(script, h, keys, args)
 
     def _evalsha_errback(self, err, script_hash):
         if err.check(ResponseError):
@@ -1425,16 +1421,12 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
                                          script_hash)
         return err
 
-    def evalsha(self, sha1_hash, **kwargs):
-        n = len(kwargs)
-        if n == 0:
-            args = ()
-        else:
-            keys, values = zip(*kwargs.items())
-            args = keys + values
+    def evalsha(self, sha1_hash, keys=[], args=[]):
+        n = len(keys)
+        keys_and_args = tuple(keys) + tuple(args)
         r = self.execute_command("EVALSHA",
                                  sha1_hash, n,
-                                 *args).addErrback(self._evalsha_errback,
+                                *keys_and_args).addErrback(self._evalsha_errback,
                                                    sha1_hash)
         if sha1_hash not in self.script_hashes:
             r.addCallback(self._eval_success, sha1_hash)
