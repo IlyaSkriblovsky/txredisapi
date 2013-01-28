@@ -1241,7 +1241,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     # Sorting
     def sort(self, key, start=None, end=None, by=None, get=None,
              desc=None, alpha=False, store=None):
-        if (start is not None and end is not None) or \
+        if (start is not None and end is None) or \
            (end is not None and start is None):
             raise RedisError("``start`` and ``end`` must both be specified")
 
