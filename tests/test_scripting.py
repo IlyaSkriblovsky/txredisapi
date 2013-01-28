@@ -23,7 +23,7 @@ from twisted.trial import unittest
 from twisted.internet import reactor
 from twisted.python import failure
 
-from .mixins import Redis26CheckMixin, REDIS_HOST, REDIS_PORT
+from tests.mixins import Redis26CheckMixin, REDIS_HOST, REDIS_PORT
 
 
 class TestScripting(unittest.TestCase, Redis26CheckMixin):
@@ -46,9 +46,10 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
     @defer.inlineCallbacks
     def test_eval(self):
         self._skipCheck()
-        d = dict(key1="first", key2="second")
-        r = yield self.db.eval(self._SCRIPT, **d)
-        self._check_eval_result(d, r)
+        keys=('key1', 'key2')
+        args=('first', 'second')
+        r = yield self.db.eval(self._SCRIPT, keys, args)
+        self._check_eval_result(keys, args, r)
         r = yield self.db.eval("return 10")
         self.assertEqual(r, 10)
         r = yield self.db.eval("return {1,2,3.3333,'foo',nil,'bar'}")
@@ -58,8 +59,32 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
         h = self._hash_script(self._SCRIPT)
         yield self.db.script_flush()
         self.db.script_hashes.add(h)
-        r = yield self.db.eval(self._SCRIPT, **d)
-        self._check_eval_result(d, r)
+        r = yield self.db.eval(self._SCRIPT, keys, args)
+        self._check_eval_result(keys, args, r)
+
+    @defer.inlineCallbacks
+    def test_eval_keys_only(self):
+        self._skipCheck()
+        keys=['foo', 'bar']
+        args=[]
+
+        r = yield self.db.eval("return {KEYS[1],KEYS[2]}", keys, args)
+        self.assertEqual(r, keys)
+
+        r = yield self.db.eval("return {KEYS[1],KEYS[2]}", keys=keys)
+        self.assertEqual(r, keys)
+
+    @defer.inlineCallbacks
+    def test_eval_args_only(self):
+        self._skipCheck()
+        keys=[]
+        args=['first', 'second']
+
+        r = yield self.db.eval("return {ARGV[1],ARGV[2]}", keys, args)
+        self.assertEqual(r, args)
+
+        r = yield self.db.eval("return {ARGV[1],ARGV[2]}", args=args)
+        self.assertEqual(r, args)
 
     @defer.inlineCallbacks
     def test_eval_error(self):
@@ -83,7 +108,7 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
         r = yield self.db.eval(self._SCRIPT)
         h = self._hash_script(self._SCRIPT)
         r = yield self.db.evalsha(h)
-        self._check_eval_result({}, r)
+        self._check_eval_result([], [], r)
 
     @defer.inlineCallbacks
     def test_evalsha_error(self):
@@ -167,12 +192,8 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
             raise self.failureException('%s not raised (%r returned)'
                                         % ('txredisapi.ResponseError', result))
 
-    def _check_eval_result(self, d, r):
-        n = len(r)
-        self.assertEqual(n, len(d) * 2)
-        new_d = dict(zip(r[:n/2], r[n/2:]))
-        for k, v in d.items():
-            assert new_d[k] == v
+    def _check_eval_result(self, keys, args, r):
+        self.assertEqual(r, list(keys) + list(args))
 
     def _hash_script(self, script):
         return hashlib.sha1(script).hexdigest()
