@@ -372,8 +372,23 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.multi_bulk = MultiBulkStorage()
 
             if self.inTransaction and reply is not None:
-                self.transactions -= len(reply)
-                if not self.transactions:
+                # There is a problem when you use transactions as follows:
+                #  > watch / mget / multi / ... / exec
+                #
+                # `watch' command will set self.inTransaction flag to
+                # True. The response of mget will make
+                # self.transactions negative and everything will fail
+                # miserably afterwards.
+                #
+                # The following `if' will ensure that we decrement it
+                # only after MULTI and EXEC commands has both been
+                # issued (to see this remember that after MULTI
+                # everything returns QUEUED).
+                # 
+                # dgvncsz0f, 03 Feb, 2013
+                if self.transactions > 0:
+                    self.transactions -= len(reply)
+                if self.transactions == 0:
                     self.inTransaction = False
 
                     tmp = []
