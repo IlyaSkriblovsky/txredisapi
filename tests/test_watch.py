@@ -79,3 +79,12 @@ class TestRedisConnections(unittest.TestCase):
         self.assertIsInstance(t, redis.RedisProtocol)
         yield t.set(self._KEYS[1], 'bar')
         yield t.commit().addBoth(self._check_watcherror, shouldError=False)
+
+    @defer.inlineCallbacks
+    def testRedisWithBulkCommands(self):
+        t = yield self.db.watch("foobar")
+        yield t.mget(["foo", "bar"])
+        t = yield t.multi()
+        yield t.commit()
+        self.assertEqual(0, t.transactions)
+        self.assertFalse(t.inTransaction)
