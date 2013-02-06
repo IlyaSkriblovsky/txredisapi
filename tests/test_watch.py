@@ -29,6 +29,7 @@ class TestRedisConnections(unittest.TestCase):
     def setUp(self):
         self.connections = []
         self.db = yield self._getRedisConnection()
+        yield self.db.delete(self._KEYS)
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -81,10 +82,49 @@ class TestRedisConnections(unittest.TestCase):
         yield t.commit().addBoth(self._check_watcherror, shouldError=False)
 
     @defer.inlineCallbacks
-    def testRedisWithBulkCommands(self):
-        t = yield self.db.watch("foobar")
-        yield t.mget(["foo", "bar"])
+    def testRedisWithBulkCommands_transactions(self):
+        t = yield self.db.watch(self._KEYS)
+        yield t.mget(self._KEYS)
         t = yield t.multi()
         yield t.commit()
         self.assertEqual(0, t.transactions)
         self.assertFalse(t.inTransaction)
+
+    @defer.inlineCallbacks
+    def testRedisWithBulkCommands_inTransaction(self):
+        t = yield self.db.watch(self._KEYS)
+        yield t.mget(self._KEYS)
+        self.assertTrue(t.inTransaction)
+        yield t.unwatch()
+
+    @defer.inlineCallbacks
+    def testRedisWithBulkCommands_mget(self):
+        yield self.db.set(self._KEYS[0], "foo")
+        yield self.db.set(self._KEYS[1], "bar")
+
+        m0 = yield self.db.mget(self._KEYS)
+        t = yield self.db.watch(self._KEYS)
+        m1 = yield t.mget(self._KEYS)
+        t = yield t.multi()
+        yield t.mget(self._KEYS)
+        (m2,) = yield t.commit()
+
+        self.assertEqual(["foo", "bar"], m0)
+        self.assertEqual(m0, m1)
+        self.assertEqual(m0, m2)
+
+    @defer.inlineCallbacks
+    def testRedisWithBulkCommands_hgetall(self):
+        yield self.db.hset(self._KEYS[0], "foo", "bar")
+        yield self.db.hset(self._KEYS[0], "bar", "foo")
+
+        h0 = yield self.db.hgetall(self._KEYS[0])
+        t = yield self.db.watch(self._KEYS[0])
+        h1 = yield t.hgetall(self._KEYS[0])
+        t = yield t.multi()
+        yield t.hgetall(self._KEYS[0])
+        (h2,) = yield t.commit()
+
+        self.assertEqual({"foo": "bar", "bar": "foo"}, h0)
+        self.assertEqual(h0, h1)
+        self.assertEqual(h0, h2)
