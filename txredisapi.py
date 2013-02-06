@@ -209,6 +209,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.transactions = 0
         self.inTransaction = False
         self.unwatch_cc = lambda: ()
+        self.commit_cc = lambda: ()
 
         self.script_hashes = set()
 
@@ -371,26 +372,16 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
             reply = self.multi_bulk.items
             self.multi_bulk = MultiBulkStorage()
 
-            if self.inTransaction and reply is not None:
-                # There is a problem when you use transactions as follows:
-                #  > watch / mget / multi / ... / exec
-                #
-                # `watch' command will set self.inTransaction flag to
-                # True. The response of mget will make
-                # self.transactions negative and everything will fail
-                # miserably afterwards.
-                #
-                # The following `if' will ensure that we decrement it
-                # only after MULTI and EXEC commands has both been
-                # issued (to see this remember that after MULTI
-                # everything returns QUEUED).
-                # 
-                # dgvncsz0f, 03 Feb, 2013
+            if self.inTransaction and reply is not None: # watch or multi has been called
                 if self.transactions > 0:
-                    self.transactions -= len(reply)
+                    self.transactions -= len(reply)      # multi: this must be an exec [commit] reply
                 if self.transactions == 0:
-                    self.inTransaction = False
-
+                    self.commit_cc()
+                if self.inTransaction:                   # watch but no multi: process the reply as usual
+                    f = self.post_proc[1:]
+                    if len(f) == 1 and callable(f[0]):
+                        reply = f[0](reply)
+                else:                                    # multi: this must be an exec reply
                     tmp = []
                     for f, v in zip(self.post_proc[1:], reply):
                         if callable(f):
@@ -1288,6 +1279,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         if not self.inTransaction:
             self.inTransaction = True
             self.unwatch_cc = self._clear_txstate
+            self.commit_cc = lambda: ()
         if isinstance(keys, (str, unicode)):
             keys = [keys]
         d = self.execute_command("WATCH", *keys).addCallback(self._tx_started)
@@ -1305,6 +1297,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     def multi(self, keys=None):
         self.inTransaction = True
         self.unwatch_cc = lambda: ()
+        self.commit_cc = self._clear_txstate
         if keys is not None:
             d = self.watch(keys)
             d.addCallback(lambda _: self.execute_command("MULTI"))
