@@ -111,29 +111,29 @@ with absolutely no changes to the logic of your program.
 
 These are all the supported methods for connecting to Redis::
 
-    Connection(host, port, dbid, reconnect)
-    lazyConnection(host, port, dbid, reconnect)
+    Connection(host, port, dbid, password, reconnect)
+    lazyConnection(host, port, dbid, password, reconnect)
 
-    ConnectionPool(host, port, dbid, poolsize, reconnect)
-    lazyConnectionPool(host, port, dbid, poolsize, reconnect)
+    ConnectionPool(host, port, dbid, password, poolsize, reconnect)
+    lazyConnectionPool(host, port, dbid, password, poolsize, reconnect)
 
-    ShardedConnection(hosts, dbid, reconnect)
-    lazyShardedConnection(hosts, dbid, reconnect)
+    ShardedConnection(hosts, dbid, password, reconnect)
+    lazyShardedConnection(hosts, dbid, password, reconnect)
 
-    ShardedConnectionPool(hosts, dbid, poolsize, reconnect)
-    lazyShardedConnectionPool(hosts, dbid, poolsize, reconnect)
+    ShardedConnectionPool(hosts, dbid, password, poolsize, reconnect)
+    lazyShardedConnectionPool(hosts, dbid, password, poolsize, reconnect)
 
-    UnixConnection(path, dbid, reconnect)
-    lazyUnixConnection(path, dbid, reconnect)
+    UnixConnection(path, dbid, password, reconnect)
+    lazyUnixConnection(path, dbid, password, reconnect)
 
-    UnixConnectionPool(unix, dbid, poolsize, reconnect)
-    lazyUnixConnectionPool(unix, dbid, poolsize, reconnect)
+    UnixConnectionPool(unix, dbid, password, poolsize, reconnect)
+    lazyUnixConnectionPool(unix, dbid, password, poolsize, reconnect)
 
-    ShardedUnixConnection(paths, dbid, reconnect)
-    lazyShardedUnixConnection(paths, dbid, reconnect)
+    ShardedUnixConnection(paths, dbid, password, reconnect)
+    lazyShardedUnixConnection(paths, dbid, password, reconnect)
 
-    ShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
-    lazyShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
+    ShardedUnixConnectionPool(paths, dbid, password, poolsize, reconnect)
+    lazyShardedUnixConnectionPool(paths, dbid, password, poolsize, reconnect)
 
 
 The arguments are:
@@ -142,6 +142,7 @@ The arguments are:
 - port: port number of the redis server. [default: 6379]
 - path: path of redis server's socket [default: /tmp/redis.sock]
 - dbid: database id of redis server. [default: 0]
+- password: authentication password of redis server. [default: None]
 - poolsize: how many connections to make. [default: 10]
 - reconnect: auto-reconnect if connection is lost. [default: True]
 - hosts (for sharded): list of ``host:port`` pairs. [default: None]
@@ -560,11 +561,6 @@ This is how to authenticate::
 
 If the password does not match, most of the commands will return nothing,
 except for ``get``, which returns ``operation not permitted``.
-
-There's one caveat: whenever authentication is required, the *database id* must
-be manually selected after the ``auth`` command. The ``dbid=N`` argument of
-``Connection()`` must not be defined, or set to ``None``; otherwise, it'll try
-to select *dbid* before authentication, and it will fail.
 
 
 Credits
