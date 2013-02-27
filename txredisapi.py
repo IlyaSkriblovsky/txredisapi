@@ -732,7 +732,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("APPEND", key, value)
 
-    def substr(self, key, start, end=-1):
+    def substr(self, key, start, end= -1):
         """
         Return a substring of a larger string
         """
@@ -1038,13 +1038,13 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
             r.addCallback(self._handle_withscores)
         return r
 
-    def zrange(self, key, start=0, end=-1, withscores=False):
+    def zrange(self, key, start=0, end= -1, withscores=False):
         """
         Return a range of elements from the sorted set at key
         """
         return self._zrange(key, start, end, withscores, False)
 
-    def zrevrange(self, key, start=0, end=-1, withscores=False):
+    def zrevrange(self, key, start=0, end= -1, withscores=False):
         """
         Return a range of elements from the sorted set at key,
         exactly like ZRANGE, but the sorted set is ordered in
@@ -1111,7 +1111,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("ZSCORE", key, element)
 
-    def zremrangebyrank(self, key, min=0, max=-1):
+    def zremrangebyrank(self, key, min=0, max= -1):
         """
         Remove all the elements with rank >= min and rank <= max from
         the sorted set
@@ -1489,7 +1489,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
                                     "KILL").addBoth(self._handle_script_kill)
 
     def script_load(self, script):
-        return self.execute_command("SCRIPT",  "LOAD", script)
+        return self.execute_command("SCRIPT", "LOAD", script)
 
 
 class MonitorProtocol(RedisProtocol):
@@ -1874,7 +1874,7 @@ class SubscriberFactory(RedisFactory):
     protocol = SubscriberProtocol
 
     def __init__(self, isLazy=False, handler=ConnectionHandler):
-        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
+        RedisFactory.__init__(self, None, None, None, 1, isLazy=isLazy,
                               handler=handler)
 
 
@@ -1882,7 +1882,7 @@ class MonitorFactory(RedisFactory):
     protocol = MonitorProtocol
 
     def __init__(self, isLazy=False, handler=ConnectionHandler):
-        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
+        RedisFactory.__init__(self, None, None, None, 1, isLazy=isLazy,
                               handler=handler)
 
 
