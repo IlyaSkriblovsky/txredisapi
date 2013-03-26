@@ -215,7 +215,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
 
     @defer.inlineCallbacks
     def connectionMade(self):
-        if self.factory.password is not None:
+        if self.factory.password:
             try:
                 response = yield self.auth(self.factory.password)
                 if isinstance(response, ResponseError):
@@ -230,7 +230,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
                     log.msg(msg)
                 defer.returnValue(None)
 
-        if self.factory.dbid is not None:
+        if self.factory.dbid:
             try:
                 response = yield self.select(self.factory.dbid)
                 if isinstance(response, ResponseError):
