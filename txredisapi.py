@@ -1562,7 +1562,7 @@ class ConnectionHandler(object):
         except Exception, e:
             d = defer.Deferred()
             d.errback(e)
-            return lambda *ign: d
+            return lambda *ign, **kwign: d
 
     def __repr__(self):
         try:
