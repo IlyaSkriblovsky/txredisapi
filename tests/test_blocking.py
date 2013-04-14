@@ -25,7 +25,7 @@ class TestBlockingCommands(unittest.TestCase):
         yield db.lpush('txredisapi:test_queue', self.QUEUE_VALUE)
 
         brpop_result = yield d
-        self.assertIsNotNone(brpop_result)
+        self.assertNotEqual(brpop_result, None)
 
         yield db.delete(self.QUEUE_KEY, self.TEST_KEY)
         yield db.disconnect()
