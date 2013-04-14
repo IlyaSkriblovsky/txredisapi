@@ -174,7 +174,7 @@ class SortedSetsTests(unittest.TestCase):
                     2: [('three', 9)],
                     })
         }
-        return self._test_zunion_inter_store(self.db.zinterstore, agg_map)
+        return self._test_zunion_inter_store(agg_map)
 
     def test_zunionstore(self):
         agg_map = {
@@ -209,10 +209,14 @@ class SortedSetsTests(unittest.TestCase):
                     ('three', 9), ('five', 10)]
             })
         }
-        return self._test_zunion_inter_store(self.db.zunionstore, agg_map)
+        return self._test_zunion_inter_store(agg_map, True)
 
     @defer.inlineCallbacks
-    def _test_zunion_inter_store(self, cmd, agg_function_map):
+    def _test_zunion_inter_store(self, agg_function_map, union=False):
+        if union:
+            cmd = self.db.zunionstore
+        else:
+            cmd = self.db.zinterstore
         key = self._getKey()
         t = self.assertEqual
         key1 = self._getKey(1)
@@ -227,7 +231,7 @@ class SortedSetsTests(unittest.TestCase):
                     else:
                         keys = {key: 1, key1: key1_weight}
                     r = yield cmd(destKey, keys, aggregate=agg_fn)
-                    if cmd == self.db.zunionstore:
+                    if union:
                         t(r, len(set(l + l1)))
                     else:
                         t(r, len(set(l) & set(l1)))
