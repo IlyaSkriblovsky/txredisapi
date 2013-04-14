@@ -1273,7 +1273,9 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         return self.execute_command("SORT", *pieces)
 
     def _clear_txstate(self):
-        self.inTransaction = False
+        if self.inTransaction:
+            self.inTransaction = False
+            self.factory.connectionQueue.put(self)
 
     def watch(self, keys):
         if not self.inTransaction:
@@ -1314,7 +1316,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     def _commit_check(self, response):
         if response is None:
             self.transactions = 0
-            self.inTransaction = False
+            self._clear_txstate()
             raise WatchError("Transaction failed")
         else:
             return response
@@ -1329,7 +1331,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
             raise RedisError("Not in transaction")
         self.post_proc = []
         self.transactions = 0
-        self.inTransaction = False
+        self._clear_txstate()
         return self.execute_command("DISCARD")
 
     # Publish/Subscribe
@@ -1557,12 +1559,32 @@ class ConnectionHandler(object):
         return d
 
     def __getattr__(self, method):
-        try:
-            return getattr(self._factory.getConnection, method)
-        except Exception, e:
-            d = defer.Deferred()
-            d.errback(e)
-            return lambda *ign, **kwign: d
+        def wrapper(*args, **kwargs):
+            d = self._factory.getConnection()
+            def callback(connection):
+                protocol_method = getattr(connection, method)
+                try:
+                    d = protocol_method(*args, **kwargs)
+                except:
+                    self._factory.connectionQueue.put(connection)
+                    raise
+
+                def put_back(reply):
+                    if not connection.inTransaction:
+                        self._factory.connectionQueue.put(connection)
+                    return reply
+
+                def switch_to_errback(reply):
+                    if isinstance(reply, Exception):
+                        raise reply
+                    return reply
+
+                d.addBoth(put_back)
+                d.addCallback(switch_to_errback)
+                return d
+            d.addCallback(callback)
+            return d
+        return wrapper
 
     def __repr__(self):
         try:
@@ -1816,8 +1838,10 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.pool = []
         self.deferred = defer.Deferred()
         self.handler = handler(self)
+        self.connectionQueue = defer.DeferredQueue()
 
     def addConnection(self, conn):
+        self.connectionQueue.put(conn)
         self.pool.append(conn)
         self.size = len(self.pool)
         if self.deferred:
@@ -1838,20 +1862,19 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             self.deferred.errback(ValueError(why))
             self.deferred = None
 
-    @property
-    def getConnection(self):
+    @defer.inlineCallbacks
+    def getConnection(self, put_back=False):
         if not self.size:
             raise ConnectionError("Not connected")
 
-        n = self.size
-        while n:
-            conn = self.pool[self.idx % self.size]
-            self.idx += 1
-            if conn.inTransaction is False:
-                return conn
-            n -= 1
-
-        raise RedisError("In transaction")
+        while True:
+            conn = yield self.connectionQueue.get()
+            if conn.connected == 0:
+                log.msg('Discarding dead connection.')
+            else:
+                if put_back:
+                    self.connectionQueue.put(conn)
+                defer.returnValue(conn)
 
 
 class SubscriberFactory(RedisFactory):

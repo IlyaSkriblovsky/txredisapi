@@ -58,7 +58,8 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
         # but redis doesn't have it
         h = self._hash_script(self._SCRIPT)
         yield self.db.script_flush()
-        self.db.script_hashes.add(h)
+        conn = yield self.db._factory.getConnection(True)
+        conn.script_hashes.add(h)
         r = yield self.db.eval(self._SCRIPT, keys, args)
         self._check_eval_result(keys, args, r)
 
