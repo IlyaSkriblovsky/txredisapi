@@ -21,7 +21,7 @@ class TestSubscriberProtocol(unittest.TestCase):
     def testDisconnectErrors(self):
         # Slightly dirty, but we want a reference to the actual
         # protocol instance
-        conn = self.db._factory.getConnection
+        conn = yield self.db._factory.getConnection(True)
 
         # This should return a deferred from the replyQueue; then
         # loseConnection will make it do an errback with a
@@ -65,7 +65,7 @@ class TestSubscriberProtocol(unittest.TestCase):
     def testUnsubscribe(self):
         yield self.db.subscribe("test_unsubscribe1")
         yield self.db.subscribe("test_unsubscribe2")
-        
+
         reply = yield self.db.unsubscribe("test_unsubscribe1")
         self.assertEqual(reply, [u"unsubscribe", u"test_unsubscribe1", 1])
         reply = yield self.db.unsubscribe("test_unsubscribe2")
@@ -83,7 +83,7 @@ class TestSubscriberProtocol(unittest.TestCase):
     def testPUnsubscribe(self):
         yield self.db.psubscribe("test_punsubscribe1.*")
         yield self.db.psubscribe("test_punsubscribe2.*")
-        
+
         reply = yield self.db.punsubscribe("test_punsubscribe1.*")
         self.assertEqual(reply, [u"punsubscribe", u"test_punsubscribe1.*", 1])
         reply = yield self.db.punsubscribe("test_punsubscribe2.*")
