@@ -851,13 +851,13 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("BRPOPLPUSH", source, destination, timeout)
 
-    def rpoplpush(self, srckey, dstkey, timeout=0):
+    def rpoplpush(self, srckey, dstkey):
         """
         Return and remove (atomically) the last element of the source
         List  stored at srckey and push the same element to the
         destination List stored at dstkey
         """
-        return self.execute_command("RPOPLPUSH", srckey, dstkey, timeout)
+        return self.execute_command("RPOPLPUSH", srckey, dstkey)
 
     def _make_set(self, result):
         if isinstance(result, list):
