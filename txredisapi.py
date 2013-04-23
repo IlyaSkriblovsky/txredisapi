@@ -343,10 +343,12 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
                     pass
 
             if el is None:
-                try:
-                    el = data.decode(self.charset)
-                except UnicodeDecodeError:
-                    el = data
+                el = data
+                if self.charset is not None:
+                    try:
+                        el = data.decode(self.charset)
+                    except UnicodeDecodeError:
+                        pass
 
         if self.multi_bulk.pending or self.multi_bulk.items:
             self.handleMultiBulkElement(el)
@@ -416,6 +418,8 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
                 if isinstance(s, str):
                     cmd = s
                 elif isinstance(s, unicode):
+                    if self.charset is None:
+                        raise InvalidData("Encoding charset was not specified")
                     try:
                         cmd = s.encode(self.charset, self.errors)
                     except UnicodeEncodeError, e:
@@ -835,7 +839,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         it; or block until one is available.
         """
         return self.execute_command("BRPOPLPUSH", source, destination, timeout)
-    
+
     def rpoplpush(self, srckey, dstkey):
         """
         Return and remove (atomically) the last element of the source
