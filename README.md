@@ -111,29 +111,29 @@ with absolutely no changes to the logic of your program.
 
 These are all the supported methods for connecting to Redis::
 
-    Connection(host, port, dbid, reconnect)
-    lazyConnection(host, port, dbid, reconnect)
+    Connection(host, port, dbid, reconnect, charset)
+    lazyConnection(host, port, dbid, reconnect, charset)
 
-    ConnectionPool(host, port, dbid, poolsize, reconnect)
-    lazyConnectionPool(host, port, dbid, poolsize, reconnect)
+    ConnectionPool(host, port, dbid, poolsize, reconnect, charset)
+    lazyConnectionPool(host, port, dbid, poolsize, reconnect, charset)
 
-    ShardedConnection(hosts, dbid, reconnect)
-    lazyShardedConnection(hosts, dbid, reconnect)
+    ShardedConnection(hosts, dbid, reconnect, charset)
+    lazyShardedConnection(hosts, dbid, reconnect, charset)
 
-    ShardedConnectionPool(hosts, dbid, poolsize, reconnect)
-    lazyShardedConnectionPool(hosts, dbid, poolsize, reconnect)
+    ShardedConnectionPool(hosts, dbid, poolsize, reconnect, charset)
+    lazyShardedConnectionPool(hosts, dbid, poolsize, reconnect, charset)
 
-    UnixConnection(path, dbid, reconnect)
-    lazyUnixConnection(path, dbid, reconnect)
+    UnixConnection(path, dbid, reconnect, charset)
+    lazyUnixConnection(path, dbid, reconnect, charset)
 
-    UnixConnectionPool(unix, dbid, poolsize, reconnect)
-    lazyUnixConnectionPool(unix, dbid, poolsize, reconnect)
+    UnixConnectionPool(unix, dbid, poolsize, reconnect, charset)
+    lazyUnixConnectionPool(unix, dbid, poolsize, reconnect, charset)
 
-    ShardedUnixConnection(paths, dbid, reconnect)
-    lazyShardedUnixConnection(paths, dbid, reconnect)
+    ShardedUnixConnection(paths, dbid, reconnect, charset)
+    lazyShardedUnixConnection(paths, dbid, reconnect, charset)
 
-    ShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
-    lazyShardedUnixConnectionPool(paths, dbid, poolsize, reconnect)
+    ShardedUnixConnectionPool(paths, dbid, poolsize, reconnect, charset)
+    lazyShardedUnixConnectionPool(paths, dbid, poolsize, reconnect, charset)
 
 
 The arguments are:
@@ -144,6 +144,8 @@ The arguments are:
 - dbid: database id of redis server. [default: 0]
 - poolsize: how many connections to make. [default: 10]
 - reconnect: auto-reconnect if connection is lost. [default: True]
+- charset: string encoding. Do not decode/encode strings if None.
+  [default: utf-8]
 - hosts (for sharded): list of ``host:port`` pairs. [default: None]
 - paths (for sharded): list of ``pathnames``. [default: None]
 
