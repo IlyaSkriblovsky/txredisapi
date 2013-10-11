@@ -1824,7 +1824,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     protocol = RedisProtocol
 
     def __init__(self, uuid, dbid, poolsize, isLazy=False,
-                 handler=ConnectionHandler):
+                 handler=ConnectionHandler, charset="utf-8"):
         if not isinstance(poolsize, int):
             raise ValueError("Redis poolsize must be an integer, not %s" %
                              repr(poolsize))
@@ -1837,6 +1837,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.dbid = dbid
         self.poolsize = poolsize
         self.isLazy = isLazy
+        self.charset = charset
 
         self.idx = 0
         self.size = 0
@@ -1844,6 +1845,14 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.deferred = defer.Deferred()
         self.handler = handler(self)
         self.connectionQueue = defer.DeferredQueue()
+
+    def buildProtocol(self, addr):
+        if hasattr(self, 'charset'):
+            p = self.protocol(self.charset)
+        else:
+            p = self.protocol()
+        p.factory = self
+        return p
 
     def addConnection(self, conn):
         self.connectionQueue.put(conn)
@@ -1898,9 +1907,11 @@ class MonitorFactory(RedisFactory):
                               handler=handler)
 
 
-def makeConnection(host, port, dbid, poolsize, reconnect, isLazy):
+def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
+                   charset="utf-8"):
     uuid = "%s:%s" % (host, port)
-    factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler)
+    factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler,
+                           charset)
     factory.continueTrying = reconnect
     for x in xrange(poolsize):
         reactor.connectTCP(host, port, factory)
@@ -1935,8 +1946,9 @@ def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy):
         return deferred
 
 
-def Connection(host="localhost", port=6379, dbid=None, reconnect=True):
-    return makeConnection(host, port, dbid, 1, reconnect, False)
+def Connection(host="localhost", port=6379, dbid=None, reconnect=True,
+               charset="utf-8"):
+    return makeConnection(host, port, dbid, 1, reconnect, False, charset)
 
 
 def lazyConnection(host="localhost", port=6379, dbid=None, reconnect=True):

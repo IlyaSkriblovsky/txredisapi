@@ -483,36 +483,36 @@ A "COUNTER" example, using WATCH/MULTI:
 
      #!/usr/bin/env python
      # coding: utf-8
-          
+
      import txredisapi as redis
-          
+
      from twisted.internet import defer
      from twisted.internet import reactor
-          
-          
+
+
      @defer.inlineCallbacks
      def main():
          rc = yield redis.ConnectionPool()
-          
+
          # Reset keys
          yield rc.set("a1", 0)
-          
+
          # Synchronize and start transaction
          t = yield rc.watch("a1")
-          
+
          # Load previous value
          a1 = yield t.get("a1")
-          
+
          # start the transactional pipeline
          yield t.multi()
-          
+
          # modify and retrieve the new a1 value
          yield t.set("a1", a1 + 1)
          yield t.get("a1")
-          
+
          print "simulating concurrency, this will abort the transaction"
          yield rc.set("a1", 2)
-          
+
          try:
              r = yield t.commit()
              print "commit=", repr(r)
@@ -520,10 +520,10 @@ A "COUNTER" example, using WATCH/MULTI:
              a1 = yield rc.get("a1")
              print "transaction has failed."
              print "current a1 value: ", a1
-          
+
          yield rc.disconnect()
-          
-          
+
+
      if __name__ == "__main__":
          main().addCallback(lambda ign: reactor.stop())
          reactor.run()
@@ -599,3 +599,8 @@ Thanks to (in no particular order):
 - dgvncsz0f
 
   - WATCH/UNWATCH commands
+
+- Ilia Glazkov
+
+  - Free connection selection algorithm for pools.
+  - Non-unicode charset fixes.
