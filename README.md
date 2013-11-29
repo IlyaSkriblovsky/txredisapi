@@ -549,8 +549,7 @@ This is how to authenticate::
 
     @defer.inlineCallbacks
     def main():
-        redis = yield txredisapi.Connection()
-        yield redis.auth("foobared")
+        redis = yield txredisapi.Connection(password="foobared")
         yield redis.set("foo", "bar")
         print (yield redis.get("foo"))
         reactor.stop()
@@ -562,11 +561,6 @@ This is how to authenticate::
 
 If the password does not match, most of the commands will return nothing,
 except for ``get``, which returns ``operation not permitted``.
-
-There's one caveat: whenever authentication is required, the *database id* must
-be manually selected after the ``auth`` command. The ``dbid=N`` argument of
-``Connection()`` must not be defined, or set to ``None``; otherwise, it'll try
-to select *dbid* before authentication, and it will fail.
 
 
 Credits
