@@ -148,6 +148,7 @@ The arguments are:
   [default: utf-8]
 - hosts (for sharded): list of ``host:port`` pairs. [default: None]
 - paths (for sharded): list of ``pathnames``. [default: None]
+- password: password for the redis server. [default: None]
 
 
 ### Connection Handlers ###
