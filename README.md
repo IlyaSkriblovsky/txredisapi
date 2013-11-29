@@ -559,9 +559,6 @@ This is how to authenticate::
         main()
         reactor.run()
 
-If the password does not match, most of the commands will return nothing,
-except for ``get``, which returns ``operation not permitted``.
-
 
 Credits
 =======
