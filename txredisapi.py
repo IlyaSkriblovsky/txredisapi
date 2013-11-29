@@ -215,6 +215,21 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
 
     @defer.inlineCallbacks
     def connectionMade(self):
+        if self.factory.password is not None:
+            try:
+                response = yield self.auth(self.factory.password)
+                if isinstance(response, ResponseError):
+                    raise response
+            except Exception, e:
+                self.factory.continueTrying = False
+                self.transport.loseConnection()
+
+                msg = "Redis error: could not auth: %s" % (str(e))
+                self.factory.connectionError(msg)
+                if self.factory.isLazy:
+                    log.msg(msg)
+                defer.returnValue(None)
+
         if self.factory.dbid is not None:
             try:
                 response = yield self.select(self.factory.dbid)
@@ -1824,7 +1839,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     protocol = RedisProtocol
 
     def __init__(self, uuid, dbid, poolsize, isLazy=False,
-                 handler=ConnectionHandler, charset="utf-8"):
+                 handler=ConnectionHandler, charset="utf-8", password=None):
         if not isinstance(poolsize, int):
             raise ValueError("Redis poolsize must be an integer, not %s" %
                              repr(poolsize))
@@ -1838,6 +1853,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.poolsize = poolsize
         self.isLazy = isLazy
         self.charset = charset
+        self.password = password
 
         self.idx = 0
         self.size = 0
@@ -1907,10 +1923,10 @@ class MonitorFactory(RedisFactory):
                               handler=handler)
 
 
-def makeConnection(host, port, dbid, poolsize, reconnect, isLazy, charset):
+def makeConnection(host, port, dbid, poolsize, reconnect, isLazy, charset, password):
     uuid = "%s:%s" % (host, port)
     factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler,
-                           charset)
+                           charset, password)
     factory.continueTrying = reconnect
     for x in xrange(poolsize):
         reactor.connectTCP(host, port, factory)
@@ -1921,7 +1937,7 @@ def makeConnection(host, port, dbid, poolsize, reconnect, isLazy, charset):
         return factory.deferred
 
 
-def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy, charset):
+def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy, charset, password):
     err = "Please use a list or tuple of host:port for sharded connections"
     if not isinstance(hosts, (list, tuple)):
         raise ValueError(err)
@@ -1935,7 +1951,7 @@ def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy, charset):
             raise ValueError(err)
 
         c = makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
-                           charset)
+                           charset, password)
         connections.append(c)
 
     if isLazy:
@@ -1947,48 +1963,48 @@ def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy, charset):
 
 
 def Connection(host="localhost", port=6379, dbid=None, reconnect=True,
-               charset="utf-8"):
-    return makeConnection(host, port, dbid, 1, reconnect, False, charset)
+               charset="utf-8", password=None):
+    return makeConnection(host, port, dbid, 1, reconnect, False, charset, password)
 
 
 def lazyConnection(host="localhost", port=6379, dbid=None, reconnect=True,
-                   charset="utf-8"):
-    return makeConnection(host, port, dbid, 1, reconnect, True, charset)
+                   charset="utf-8", password=None):
+    return makeConnection(host, port, dbid, 1, reconnect, True, charset, password)
 
 
 def ConnectionPool(host="localhost", port=6379, dbid=None,
-                   poolsize=10, reconnect=True, charset="utf-8"):
-    return makeConnection(host, port, dbid, poolsize, reconnect, False, charset)
+                   poolsize=10, reconnect=True, charset="utf-8", password=None):
+    return makeConnection(host, port, dbid, poolsize, reconnect, False, charset, password)
 
 
 def lazyConnectionPool(host="localhost", port=6379, dbid=None,
-                       poolsize=10, reconnect=True, charset="utf-8"):
-    return makeConnection(host, port, dbid, poolsize, reconnect, True, charset)
+                       poolsize=10, reconnect=True, charset="utf-8", password=None):
+    return makeConnection(host, port, dbid, poolsize, reconnect, True, charset, password)
 
 
-def ShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8"):
-    return makeShardedConnection(hosts, dbid, 1, reconnect, False, charset)
+def ShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8", password=None):
+    return makeShardedConnection(hosts, dbid, 1, reconnect, False, charset, password)
 
 
-def lazyShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8"):
-    return makeShardedConnection(hosts, dbid, 1, reconnect, True, charset)
+def lazyShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8", password=None):
+    return makeShardedConnection(hosts, dbid, 1, reconnect, True, charset, password)
 
 
 def ShardedConnectionPool(hosts, dbid=None, poolsize=10, reconnect=True,
-                          charset="utf-8"):
+                          charset="utf-8", password=None):
     return makeShardedConnection(hosts, dbid, poolsize, reconnect, False,
-                                 charset)
+                                 charset, password)
 
 
 def lazyShardedConnectionPool(hosts, dbid=None, poolsize=10, reconnect=True,
-                              charset="utf-8"):
+                              charset="utf-8", password=None):
     return makeShardedConnection(hosts, dbid, poolsize, reconnect, True,
-                                 charset)
+                                 charset, password)
 
 
-def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy, charset):
+def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy, charset, password):
     factory = RedisFactory(path, dbid, poolsize, isLazy, UnixConnectionHandler,
-                           charset)
+                           charset, password)
     factory.continueTrying = reconnect
     for x in xrange(poolsize):
         reactor.connectUNIX(path, factory)
@@ -2000,14 +2016,14 @@ def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy, charset):
 
 
 def makeShardedUnixConnection(paths, dbid, poolsize, reconnect, isLazy,
-                              charset):
+                              charset, password):
     err = "Please use a list or tuple of paths for sharded unix connections"
     if not isinstance(paths, (list, tuple)):
         raise ValueError(err)
 
     connections = []
     for path in paths:
-        c = makeUnixConnection(path, dbid, poolsize, reconnect, isLazy, charset)
+        c = makeUnixConnection(path, dbid, poolsize, reconnect, isLazy, charset, password)
         connections.append(c)
 
     if isLazy:
@@ -2019,44 +2035,44 @@ def makeShardedUnixConnection(paths, dbid, poolsize, reconnect, isLazy,
 
 
 def UnixConnection(path="/tmp/redis.sock", dbid=None, reconnect=True,
-                   charset="utf-8"):
-    return makeUnixConnection(path, dbid, 1, reconnect, False, charset)
+                   charset="utf-8", password=None):
+    return makeUnixConnection(path, dbid, 1, reconnect, False, charset, password)
 
 
 def lazyUnixConnection(path="/tmp/redis.sock", dbid=None, reconnect=True,
-                       charset="utf-8"):
-    return makeUnixConnection(path, dbid, 1, reconnect, True, charset)
+                       charset="utf-8", password=None):
+    return makeUnixConnection(path, dbid, 1, reconnect, True, charset, password)
 
 
 def UnixConnectionPool(path="/tmp/redis.sock", dbid=None, poolsize=10,
-                       reconnect=True, charset="utf-8"):
-    return makeUnixConnection(path, dbid, poolsize, reconnect, False, charset)
+                       reconnect=True, charset="utf-8", password=None):
+    return makeUnixConnection(path, dbid, poolsize, reconnect, False, charset, password)
 
 
 def lazyUnixConnectionPool(path="/tmp/redis.sock", dbid=None, poolsize=10,
-                           reconnect=True, charset="utf-8"):
-    return makeUnixConnection(path, dbid, poolsize, reconnect, True, charset)
+                           reconnect=True, charset="utf-8", password=None):
+    return makeUnixConnection(path, dbid, poolsize, reconnect, True, charset, password)
 
 
-def ShardedUnixConnection(paths, dbid=None, reconnect=True, charset="utf-8"):
-    return makeShardedUnixConnection(paths, dbid, 1, reconnect, False, charset)
+def ShardedUnixConnection(paths, dbid=None, reconnect=True, charset="utf-8", password=None):
+    return makeShardedUnixConnection(paths, dbid, 1, reconnect, False, charset, password)
 
 
 def lazyShardedUnixConnection(paths, dbid=None, reconnect=True,
-                              charset="utf-8"):
-    return makeShardedUnixConnection(paths, dbid, 1, reconnect, True, charset)
+                              charset="utf-8", password=None):
+    return makeShardedUnixConnection(paths, dbid, 1, reconnect, True, charset, password)
 
 
 def ShardedUnixConnectionPool(paths, dbid=None, poolsize=10, reconnect=True,
-                              charset="utf-8"):
+                              charset="utf-8", password=None):
     return makeShardedUnixConnection(paths, dbid, poolsize, reconnect, False,
-                                     charset)
+                                     charset, password)
 
 
 def lazyShardedUnixConnectionPool(paths, dbid=None, poolsize=10,
-                                  reconnect=True, charset="utf-8"):
+                                  reconnect=True, charset="utf-8", password=None):
     return makeShardedUnixConnection(paths, dbid, poolsize, reconnect, True,
-                                     charset)
+                                     charset, password)
 
 
 __all__ = [
