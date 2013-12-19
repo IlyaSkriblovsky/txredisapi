@@ -213,6 +213,10 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         self.script_hashes = set()
 
+        self.pipelining = False
+        self.pipelined_commands = []
+        self.pipelined_replies = []
+
     @defer.inlineCallbacks
     def connectionMade(self):
         if self.factory.password is not None:
@@ -427,6 +431,8 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         if self.connected == 0:
             raise ConnectionError("Not connected")
         else:
+
+            # Build the redis command.
             cmds = []
             cmd_template = "$%s\r\n%s\r\n"
             for s in args:
@@ -449,8 +455,25 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
                 else:
                     cmd = str(s)
                 cmds.append(cmd_template % (len(cmd), cmd))
-            self.transport.write("*%s\r\n%s" % (len(cmds), "".join(cmds)))
+            command = "*%s\r\n%s" % (len(cmds), "".join(cmds))
+
+            # When pipelining, buffer this command into our list of
+            # pipelined commands. Otherwise, write the command immediately.
+            if self.pipelining:
+                self.pipelined_commands.append(command)
+            else:
+                self.transport.write(command)
+
+            # Return deferred that will contain the result of this command.
+            # Note: when using pipelining, this deferred will NOT return
+            # until after execute_pipeline is called.
             r = self.replyQueue.get().addCallback(self.handle_reply)
+
+            # When pipelining, we need to keep track of the deferred replies
+            # so that we can wait for them in a DeferredList when
+            # execute_pipeline is called.
+            if self.pipelining:
+                self.pipelined_replies.append(r)
 
             if self.inTransaction:
                 self.post_proc.append(kwargs.get("post_proc"))
@@ -1353,6 +1376,36 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         self._clear_txstate()
         return self.execute_command("DISCARD")
 
+    # Returns a proxy that works just like .multi() except that commands
+    # are simply buffered to be written all at once in a pipeline.
+    # http://redis.io/topics/pipelining
+    def pipeline(self):
+
+        # Return a deferred that returns self (rather than simply self) to allow
+        # ConnectionHandler to wrap this method with async connection retrieval.
+        self.pipelining = True
+        self.pipelined_commands = []
+        self.pipelined_replies = []
+        d = defer.Deferred()
+        d.addCallback(lambda x: x)
+        d.callback(self)
+        return d
+
+    def execute_pipeline(self):
+        if not self.pipelining:
+            raise RedisError("Not currently pipelining commands, please use pipeline() first")
+
+        # Flush all the commands at once to redis. Wait for all replies
+        # to come back using a deferred list.
+        try:
+            self.transport.write("".join(self.pipelined_commands))
+            return defer.DeferredList(self.pipelined_replies)
+
+        finally:
+            self.pipelining = False
+            self.pipelined_commands = []
+            self.pipelined_replies = []
+
     # Publish/Subscribe
     # see the SubscriberProtocol for subscribing to channels
     def publish(self, channel, message):
@@ -1775,6 +1828,9 @@ class ShardedConnectionHandler(object):
             node = self._ring(key)
 
         return getattr(node, method)(*args, **kwargs)
+
+    def pipeline(self):
+        raise NotImplementedError("Pipelining is not supported across shards")
 
     def __getattr__(self, method):
         if method in ShardedMethods:
