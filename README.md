@@ -536,6 +536,46 @@ Calling ``commit`` will cause it to return a list with the return of all
 commands executed in the transaction. ``discard``, on the other hand, will
 normally return just an ``OK``.
 
+### Pipelining ###
+
+Redis supports [pipelining](http://redis.io/topics/pipelining) multiple commands
+at once to improve performance. Currently, pipelining is NOT supported
+on sharded connections.
+
+To execute commands in a pipeline:
+
+    #!/usr/bin/env python
+    # coding: utf-8
+
+    import txredisapi as redis
+
+    from twisted.internet import defer
+    from twisted.internet import reactor
+
+    @defer.inlineCallbacks
+    def main():
+        rc = yield redis.ConnectionPool()
+
+        # Start pipeline
+        pipeline = yield rc.pipeline()
+
+        pipeline.set("foo", 123)
+        pipeline.set("bar", 987)
+        pipeline.get("foo")
+        pipeline.get("bar")
+
+        # Write those 2 sets and 2 gets to redis all at once, and wait
+        # for all replies before continuing.
+        results = yield pipeline.execute_pipeline()
+
+        print "foo:", results[2] # should be 123
+        print "bar:", results[3] # should be 987
+
+        yield rc.disconnect()
+
+    if __name__ == "__main__":
+        main().addCallback(lambda ign: reactor.stop())
+        reactor.run()
 
 ### Authentication ###
 
@@ -598,3 +638,7 @@ Thanks to (in no particular order):
 
   - Free connection selection algorithm for pools.
   - Non-unicode charset fixes.
+
+- Matt Pizzimenti (mjpizz)
+
+  - pipelining support
