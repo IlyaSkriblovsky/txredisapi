@@ -1400,7 +1400,11 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         # to come back using a deferred list.
         try:
             self.transport.write("".join(self.pipelined_commands))
-            results = yield defer.DeferredList(self.pipelined_replies)
+            results = yield defer.DeferredList(
+                deferredList=self.pipelined_replies,
+                fireOnOneErrback=True,
+                consumeErrors=True,
+                )
             defer.returnValue([value for success, value in results])
 
         finally:
