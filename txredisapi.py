@@ -1391,6 +1391,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         d.callback(self)
         return d
 
+    @defer.inlineCallbacks
     def execute_pipeline(self):
         if not self.pipelining:
             raise RedisError("Not currently pipelining commands, please use pipeline() first")
@@ -1399,7 +1400,12 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         # to come back using a deferred list.
         try:
             self.transport.write("".join(self.pipelined_commands))
-            return defer.DeferredList(self.pipelined_replies)
+            results = yield defer.DeferredList(
+                deferredList=self.pipelined_replies,
+                fireOnOneErrback=True,
+                consumeErrors=True,
+                )
+            defer.returnValue([value for success, value in results])
 
         finally:
             self.pipelining = False
