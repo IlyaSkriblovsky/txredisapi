@@ -1619,10 +1619,6 @@ class ConnectionHandler(object):
         self._factory = factory
         self._connected = factory.deferred
 
-    def _wait_pool_cleanup(self, deferred):
-        if self._factory.size == 0:
-            deferred.callback(True)
-
     def disconnect(self):
         self._factory.continueTrying = 0
         for conn in self._factory.pool:
@@ -1631,11 +1627,7 @@ class ConnectionHandler(object):
             except:
                 pass
 
-        d = defer.Deferred()
-        t = task.LoopingCall(self._wait_pool_cleanup, d)
-        d.addCallback(lambda ign: t.stop())
-        t.start(.5)
-        return d
+        return self._factory.waitForEmptyPool()
 
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
@@ -1923,6 +1915,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.deferred = defer.Deferred()
         self.handler = handler(self)
         self.connectionQueue = defer.DeferredQueue()
+        self._waitingForEmptyPool = set()
 
     def buildProtocol(self, addr):
         if hasattr(self, 'charset'):
@@ -1948,6 +1941,25 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             log.msg("Could not remove connection from pool: %s" % str(e))
 
         self.size = len(self.pool)
+        if not self.size and self._waitingForEmptyPool:
+            deferreds = self._waitingForEmptyPool
+            self._waitingForEmptyPool = set()
+            for d in deferreds:
+                d.callback(None)
+
+    def _cancelWaitForEmptyPool(self, deferred):
+        self._waitingForEmptyPool.discard(deferred)
+        deferred.errback(defer.CancelledError())
+
+    def waitForEmptyPool(self):
+        """
+        Returns a Deferred which fires when the pool size has reached 0.
+        """
+        if not self.size:
+            return defer.succeed(None)
+        d = defer.Deferred(self._cancelWaitForEmptyPool)
+        self._waitingForEmptyPool.add(d)
+        return d
 
     def connectionError(self, why):
         if self.deferred:
