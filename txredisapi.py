@@ -610,23 +610,24 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         return self.execute_command("FLUSHALL")
 
     # Commands operating on string values
-    def set(self, key, value, preserve=False, getset=False):
+    def set(self, key, value, expire=None, pexpire=None,
+            only_if_not_exists=False, only_if_exists=False):
         """
         Set a key to a string value
         """
-        if preserve:
-            warnings.warn(DeprecationWarning(
-                "preserve option to 'set' is deprecated, "
-                "use redis.setnx() instead"))
-            return self.setnx(key, value)
-
-        if getset:
-            warnings.warn(DeprecationWarning(
-                "getset option to 'set' is deprecated, "
-                "use redis.getset() instead"))
-            return self.getset(key, value)
-
-        return self.execute_command("SET", key, value)
+        args = []
+        if expire is not None:
+            args.extend(("EX", expire))
+        if pexpire is not None:
+            args.extend(("PX", pexpire))
+        if only_if_not_exists and only_if_exists:
+            raise RedisError("only_if_not_exists and only_if_exists "
+                             "cannot be true simultaneously")
+        if only_if_not_exists:
+            args.append("NX")
+        if only_if_exists:
+            args.append("XX")
+        return self.execute_command("SET", key, value, *args)
 
     def get(self, key):
         """

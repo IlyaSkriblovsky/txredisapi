@@ -642,3 +642,7 @@ Thanks to (in no particular order):
 - Matt Pizzimenti (mjpizz)
 
   - pipelining support
+
+- Nickolai Novik (jettify)
+
+  - update of SET command
