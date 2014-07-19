@@ -13,19 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi as redis
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class TestRedisHashOperations(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisHSetHGet(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         for hk in ("foo", "bar"):
             yield db.hset("txredisapi:HSetHGet", hk, 1)
             result = yield db.hget("txredisapi:HSetHGet", hk)
@@ -35,7 +34,7 @@ class TestRedisHashOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisHMSetHMGet(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
@@ -51,7 +50,7 @@ class TestRedisHashOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisHKeysHVals(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
@@ -68,7 +67,7 @@ class TestRedisHashOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisHIncrBy(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield db.hset("txredisapi:HIncrBy", "value", 1)
         yield db.hincr("txredisapi:HIncrBy", "value")
         yield db.hincrby("txredisapi:HIncrBy", "value", 2)
@@ -84,7 +83,7 @@ class TestRedisHashOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisHLenHDelHExists(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
@@ -104,7 +103,7 @@ class TestRedisHashOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisHLenHDelMulti(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         t_dict = {}
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
@@ -124,7 +123,7 @@ class TestRedisHashOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisHGetAll(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
 
         d = {u"key1": u"uno", u"key2": u"dos"}
         yield db.hmset("txredisapi:HGetAll", d)

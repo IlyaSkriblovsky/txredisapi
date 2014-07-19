@@ -13,16 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi
-from twisted.trial import unittest
-from twisted.internet import defer, reactor
-from twisted.python import log
 import sys
 
-log.startLogging(sys.stdout)
+from twisted.trial import unittest
+from twisted.internet import defer
+from twisted.python import log
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
+
+log.startLogging(sys.stdout)
 
 
 class InspectableTransport(object):
@@ -82,30 +83,30 @@ class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def test_Connection(self):
 
-        db = yield txredisapi.Connection(redis_host, redis_port, reconnect=False)
+        db = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield self._assert_simple_sets_on_pipeline(db=db)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_ConnectionDB1(self):
 
-        db = yield txredisapi.Connection(redis_host, redis_port, dbid=1,
-                                    reconnect=False)
+        db = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT, dbid=1,
+                                         reconnect=False)
         yield self._assert_simple_sets_on_pipeline(db=db)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_ConnectionPool(self):
 
-        db = yield txredisapi.ConnectionPool(redis_host, redis_port, poolsize=2,
-                                        reconnect=False)
+        db = yield txredisapi.ConnectionPool(REDIS_HOST, REDIS_PORT, poolsize=2,
+                                             reconnect=False)
         yield self._assert_simple_sets_on_pipeline(db=db)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_lazyConnection(self):
 
-        db = txredisapi.lazyConnection(redis_host, redis_port, reconnect=False)
+        db = txredisapi.lazyConnection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield self._wait_for_lazy_connection(db)
         yield self._assert_simple_sets_on_pipeline(db=db)
         yield db.disconnect()
@@ -113,7 +114,7 @@ class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def test_lazyConnectionPool(self):
 
-        db = txredisapi.lazyConnectionPool(redis_host, redis_port, reconnect=False)
+        db = txredisapi.lazyConnectionPool(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield self._wait_for_lazy_connection(db)
         yield self._assert_simple_sets_on_pipeline(db=db)
         yield db.disconnect()
@@ -121,7 +122,7 @@ class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def test_ShardedConnection(self):
 
-        hosts = ["%s:%s" % (redis_host, redis_port)]
+        hosts = ["%s:%s" % (REDIS_HOST, REDIS_PORT)]
         db = yield txredisapi.ShardedConnection(hosts, reconnect=False)
         try:
             yield db.pipeline()
@@ -133,7 +134,7 @@ class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def test_ShardedConnectionPool(self):
 
-        hosts = ["%s:%s" % (redis_host, redis_port)]
+        hosts = ["%s:%s" % (REDIS_HOST, REDIS_PORT)]
         db = yield txredisapi.ShardedConnectionPool(hosts, reconnect=False)
         try:
             yield db.pipeline()

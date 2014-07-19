@@ -20,12 +20,8 @@ REDIS_HOST = "localhost"
 REDIS_PORT = 6379
 
 
-class Redis26CheckMixin(object):
-    @defer.inlineCallbacks
-    def is_redis_2_6(self):
-        """
-        Returns true if the Redis version >= 2.6
-        """
+class RedisVersionCheckMixin(object):
+    def checkVersion(self, major, minor, patch=0):
         d = yield self.db.info("server")
         if u'redis_version' not in d:
             defer.returnValue(False)
@@ -34,11 +30,26 @@ class Redis26CheckMixin(object):
         ver_list = [int(x) for x in ver.split(u'.')]
         if len(ver_list) < 2:
             defer.returnValue(False)
-        if ver_list[0] > 2:
+        if len(ver_list) == 2:
+            ver_list.append(0)
+        if ver_list[0] > major:
             defer.returnValue(True)
-        elif ver_list[0] == 2 and ver_list[1] >= 6:
-            defer.returnValue(True)
+        elif ver_list[0] == major:
+            if ver_list[1] > minor:
+                defer.returnValue(True)
+            elif ver_list[1] == minor:
+                if ver_list[2] >= patch:
+                    defer.returnValue(True)
         defer.returnValue(False)
+
+
+class Redis26CheckMixin(RedisVersionCheckMixin):
+    @defer.inlineCallbacks
+    def is_redis_2_6(self):
+        """
+        Returns true if the Redis version >= 2.6
+        """
+        return self.checkVersion(2, 6)
 
     def _skipCheck(self):
         if not self.redis_2_6:

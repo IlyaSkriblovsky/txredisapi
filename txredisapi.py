@@ -1,4 +1,4 @@
-# coding: utf-8
+# codingr utf-8
 # Copyright 2009 Alexandre Fiori
 # https://github.com/fiorix/txredisapi
 #
@@ -36,7 +36,6 @@ import hashlib
 from twisted.internet import defer
 from twisted.internet import protocol
 from twisted.internet import reactor
-from twisted.internet import task
 from twisted.protocols import basic
 from twisted.protocols import policies
 from twisted.python import log
@@ -393,16 +392,17 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
             reply = self.multi_bulk.items
             self.multi_bulk = MultiBulkStorage()
 
-            if self.inTransaction and reply is not None: # watch or multi has been called
+            if self.inTransaction and reply is not None:  # watch or multi has been called
                 if self.transactions > 0:
-                    self.transactions -= len(reply)      # multi: this must be an exec [commit] reply
+                    # multi: this must be an exec [commit] reply
+                    self.transactions -= len(reply)
                 if self.transactions == 0:
                     self.commit_cc()
-                if self.inTransaction:                   # watch but no multi: process the reply as usual
+                if self.inTransaction:  # watch but no multi: process the reply as usual
                     f = self.post_proc[1:]
                     if len(f) == 1 and callable(f[0]):
                         reply = f[0](reply)
-                else:                                    # multi: this must be an exec reply
+                else:  # multi: this must be an exec reply
                     tmp = []
                     for f, v in zip(self.post_proc[1:], reply):
                         if callable(f):
@@ -872,7 +872,7 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         keys.append(timeout)
         return self.execute_command("BRPOP", *keys)
 
-    def brpoplpush(self, source, destination, timeout = 0):
+    def brpoplpush(self, source, destination, timeout=0):
         """
         Pop a value from a list, push it to another list and return
         it; or block until one is available.
@@ -1395,7 +1395,8 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     @defer.inlineCallbacks
     def execute_pipeline(self):
         if not self.pipelining:
-            raise RedisError("Not currently pipelining commands, please use pipeline() first")
+            err = "Not currently pipelining commands, please use pipeline() first"
+            raise RedisError(err)
 
         # Flush all the commands at once to redis. Wait for all replies
         # to come back using a deferred list.
@@ -1515,8 +1516,8 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         keys_and_args = tuple(keys) + tuple(args)
         r = self.execute_command("EVALSHA",
                                  sha1_hash, n,
-                                *keys_and_args).addErrback(self._evalsha_errback,
-                                                   sha1_hash)
+                                 *keys_and_args).addErrback(self._evalsha_errback,
+                                                            sha1_hash)
         if sha1_hash not in self.script_hashes:
             r.addCallback(self._eval_success, sha1_hash)
         return r
@@ -1633,6 +1634,7 @@ class ConnectionHandler(object):
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
             d = self._factory.getConnection()
+
             def callback(connection):
                 protocol_method = getattr(connection, method)
                 try:
@@ -1768,7 +1770,7 @@ class HashRing(object):
     def get_node(self, key):
         n, i = self.get_node_pos(key)
         return n
-    #self.get_node_pos(key)[0]
+    # self.get_node_pos(key)[0]
 
     def get_node_pos(self, key):
         if len(self.ring) == 0:
@@ -2061,7 +2063,8 @@ def ShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8", passwor
     return makeShardedConnection(hosts, dbid, 1, reconnect, False, charset, password)
 
 
-def lazyShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8", password=None):
+def lazyShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8",
+                          password=None):
     return makeShardedConnection(hosts, dbid, 1, reconnect, True, charset, password)
 
 
@@ -2129,7 +2132,8 @@ def lazyUnixConnectionPool(path="/tmp/redis.sock", dbid=None, poolsize=10,
     return makeUnixConnection(path, dbid, poolsize, reconnect, True, charset, password)
 
 
-def ShardedUnixConnection(paths, dbid=None, reconnect=True, charset="utf-8", password=None):
+def ShardedUnixConnection(paths, dbid=None, reconnect=True, charset="utf-8",
+                          password=None):
     return makeShardedUnixConnection(paths, dbid, 1, reconnect, False, charset, password)
 
 

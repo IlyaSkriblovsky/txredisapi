@@ -13,26 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi
-from twisted.trial import unittest
-from twisted.internet import defer, reactor
-from twisted.python import log                                                  
 import sys
+
+from twisted.trial import unittest
+from twisted.internet import defer
+from twisted.python import log
+
+import txredisapi
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 log.startLogging(sys.stdout)
 
-redis_host="localhost"
-redis_port=6379
 
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisConnection(self):
-        rapi = yield txredisapi.Connection(redis_host, redis_port)
-        
+        rapi = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT)
+
         # test set() operation
         transaction = yield rapi.multi("txredisapi:test_transaction")
         self.assertTrue(transaction.inTransaction)
-        for key, value in (("txredisapi:test_transaction", "foo"), ("txredisapi:test_transaction", "bar")):
+        for key, value in (("txredisapi:test_transaction", "foo"),
+                           ("txredisapi:test_transaction", "bar")):
             yield transaction.set(key, value)
         yield transaction.commit()
         self.assertFalse(transaction.inTransaction)
@@ -43,7 +46,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisWithOnlyWatchUnwatch(self):
-        rapi = yield txredisapi.Connection(redis_host, redis_port)
+        rapi = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT)
 
         k = "txredisapi:testRedisWithOnlyWatchAndUnwatch"
         tx = yield rapi.watch(k)
@@ -58,7 +61,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisWithWatchAndMulti(self):
-        rapi = yield txredisapi.Connection(redis_host, redis_port)
+        rapi = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT)
 
         tx = yield rapi.watch("txredisapi:testRedisWithWatchAndMulti")
         yield tx.multi()
@@ -72,7 +75,8 @@ class TestRedisConnections(unittest.TestCase):
     # some sort of probabilistic test
     @defer.inlineCallbacks
     def testWatchAndPools_1(self):
-        rapi = yield txredisapi.ConnectionPool(redis_host, redis_port, poolsize=2, reconnect=False)
+        rapi = yield txredisapi.ConnectionPool(REDIS_HOST, REDIS_PORT,
+                                               poolsize=2, reconnect=False)
         tx1 = yield rapi.watch("foobar")
         tx2 = yield tx1.watch("foobaz")
         self.assertTrue(id(tx1) == id(tx2))
@@ -81,7 +85,8 @@ class TestRedisConnections(unittest.TestCase):
     # some sort of probabilistic test
     @defer.inlineCallbacks
     def testWatchAndPools_2(self):
-        rapi = yield txredisapi.ConnectionPool(redis_host, redis_port, poolsize=2, reconnect=False)
+        rapi = yield txredisapi.ConnectionPool(REDIS_HOST, REDIS_PORT,
+                                               poolsize=2, reconnect=False)
         tx1 = yield rapi.watch("foobar")
         tx2 = yield rapi.watch("foobaz")
         self.assertTrue(id(tx1) != id(tx2))
@@ -89,7 +94,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testWatchEdgeCase_1(self):
-        rapi = yield txredisapi.Connection(redis_host, redis_port)
+        rapi = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT)
 
         tx = yield rapi.multi("foobar")
         yield tx.unwatch()
@@ -101,7 +106,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testWatchEdgeCase_2(self):
-        rapi = yield txredisapi.Connection(redis_host, redis_port)
+        rapi = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT)
 
         tx = yield rapi.multi()
         try:
@@ -116,7 +121,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testWatchEdgeCase_3(self):
-        rapi = yield txredisapi.Connection(redis_host, redis_port)
+        rapi = yield txredisapi.Connection(REDIS_HOST, REDIS_PORT)
 
         tx = yield rapi.watch("foobar")
         tx = yield tx.multi("foobaz")

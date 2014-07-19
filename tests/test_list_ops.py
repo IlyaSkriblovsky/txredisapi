@@ -13,19 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi as redis
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class TestRedisListOperations(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisLPUSHSingleValue(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield db.delete("txredisapi:LPUSH")
         yield db.lpush("txredisapi:LPUSH", "singlevalue")
         result = yield db.lpop("txredisapi:LPUSH")
@@ -34,16 +33,16 @@ class TestRedisListOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisLPUSHListOfValues(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield db.delete("txredisapi:LPUSH")
-        yield db.lpush("txredisapi:LPUSH", [1,2,3])
+        yield db.lpush("txredisapi:LPUSH", [1, 2, 3])
         result = yield db.lrange("txredisapi:LPUSH", 0, -1)
-        self.assertEqual(result, [3,2,1])
+        self.assertEqual(result, [3, 2, 1])
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def testRedisRPUSHSingleValue(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield db.delete("txredisapi:RPUSH")
         yield db.lpush("txredisapi:RPUSH", "singlevalue")
         result = yield db.lpop("txredisapi:RPUSH")
@@ -52,12 +51,9 @@ class TestRedisListOperations(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisRPUSHListOfValues(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield db.delete("txredisapi:RPUSH")
-        yield db.lpush("txredisapi:RPUSH", [1,2,3])
+        yield db.lpush("txredisapi:RPUSH", [1, 2, 3])
         result = yield db.lrange("txredisapi:RPUSH", 0, -1)
-        self.assertEqual(result, [3,2,1])
+        self.assertEqual(result, [3, 2, 1])
         yield db.disconnect()
-
-
-
