@@ -79,7 +79,10 @@ def list_or_args(command, keys, args):
     try:
         iter(keys)
         if isinstance(keys, (str, unicode)):
-            raise TypeError
+            keys = [keys]
+            if not oldapi:
+                return keys
+            oldapi = True
     except TypeError:
         oldapi = True
         keys = [keys]
