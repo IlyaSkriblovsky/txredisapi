@@ -1558,6 +1558,19 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     def script_load(self, script):
         return self.execute_command("SCRIPT",  "LOAD", script)
 
+    # Redis 2.8.9 HyperLogLog commands
+    def pfadd(self, key, elements, *args):
+        elements = list_or_args("pfadd", elements, args)
+        return self.execute_command("PFADD", key, *elements)
+
+    def pfcount(self, keys, *args):
+        keys = list_or_args("pfcount", keys, args)
+        return self.execute_command("PFCOUNT", *keys)
+
+    def pfmerge(self, destKey, sourceKeys, *args):
+        sourceKeys = list_or_args("pfmerge", sourceKeys, args)
+        return self.execute_command("PFMERGE", destKey, *sourceKeys)
+
 
 class MonitorProtocol(RedisProtocol):
     """
