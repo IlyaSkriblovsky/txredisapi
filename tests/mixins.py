@@ -21,6 +21,7 @@ REDIS_PORT = 6379
 
 
 class RedisVersionCheckMixin(object):
+    @defer.inlineCallbacks
     def checkVersion(self, major, minor, patch=0):
         d = yield self.db.info("server")
         if u'redis_version' not in d:
@@ -44,7 +45,6 @@ class RedisVersionCheckMixin(object):
 
 
 class Redis26CheckMixin(RedisVersionCheckMixin):
-    @defer.inlineCallbacks
     def is_redis_2_6(self):
         """
         Returns true if the Redis version >= 2.6
