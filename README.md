@@ -646,3 +646,7 @@ Thanks to (in no particular order):
 - Nickolai Novik (jettify)
 
   - update of SET command
+
+- Evgeny Tataurov (etataurov)
+
+  - Ability to use hiredis protocol parser
