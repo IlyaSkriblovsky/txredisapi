@@ -15,13 +15,12 @@
 
 import random
 
-import txredisapi as redis
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class SetsTests(unittest.TestCase):
@@ -34,7 +33,7 @@ class SetsTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.db = yield redis.Connection(redis_host, redis_port,
+        self.db = yield redis.Connection(REDIS_HOST, REDIS_PORT,
                                          reconnect=False)
 
     @defer.inlineCallbacks

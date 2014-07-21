@@ -13,18 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi as redis
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class TestRedisConnections(unittest.TestCase):
     @defer.inlineCallbacks
     def testRedisOperations1(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
 
         # test set() operation
         kvpairs = (("txredisapi:test1", "foo"), ("txredisapi:test2", "bar"))
@@ -37,7 +37,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisOperations2(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
 
         k = ["txredisapi:a", "txredisapi:b"]
         v = [1, 2]
@@ -53,7 +53,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisError(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         yield db.set('txredisapi:a', 'test')
         try:
             yield db.sort('txredisapi:a', end='a')
@@ -85,7 +85,7 @@ class TestRedisConnections(unittest.TestCase):
             d = defer.Deferred()
             reactor.callLater(secs, d.callback, None)
             return d
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         key, value = "txredisapi:test1", "foo"
         # test expiration in milliseconds
         yield db.set(key, value, pexpire=10)
@@ -106,7 +106,7 @@ class TestRedisConnections(unittest.TestCase):
 
     @defer.inlineCallbacks
     def testRedisOperationsSet2(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         key, value = "txredisapi:test_exists", "foo"
         # ensure value does not exits and new value sets
         yield db.delete(key)
@@ -121,10 +121,9 @@ class TestRedisConnections(unittest.TestCase):
         self.assertEqual(result_2, value)
         yield db.disconnect()
 
-
     @defer.inlineCallbacks
     def testRedisOperationsSet3(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         key, value = "txredisapi:test_not_exists", "foo_not_exists"
         # ensure that such key does not exits, and value not sets
         yield db.delete(key)

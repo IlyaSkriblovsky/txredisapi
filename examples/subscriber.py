@@ -35,8 +35,8 @@ class myProtocol(redis.SubscriberProtocol):
         print "$ redis-cli publish foo.bar hello world"
         self.subscribe("zz")
         self.psubscribe("foo.*")
-        #reactor.callLater(10, self.unsubscribe, "zz")
-        #reactor.callLater(15, self.punsubscribe, "foo.*")
+        # reactor.callLater(10, self.unsubscribe, "zz")
+        # reactor.callLater(15, self.punsubscribe, "foo.*")
 
         # self.continueTrying = False
         # self.transport.loseConnection()

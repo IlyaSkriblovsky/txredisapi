@@ -46,8 +46,8 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
     @defer.inlineCallbacks
     def test_eval(self):
         self._skipCheck()
-        keys=('key1', 'key2')
-        args=('first', 'second')
+        keys = ('key1', 'key2')
+        args = ('first', 'second')
         r = yield self.db.eval(self._SCRIPT, keys, args)
         self._check_eval_result(keys, args, r)
         r = yield self.db.eval("return 10")
@@ -66,8 +66,8 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
     @defer.inlineCallbacks
     def test_eval_keys_only(self):
         self._skipCheck()
-        keys=['foo', 'bar']
-        args=[]
+        keys = ['foo', 'bar']
+        args = []
 
         r = yield self.db.eval("return {KEYS[1],KEYS[2]}", keys, args)
         self.assertEqual(r, keys)
@@ -78,8 +78,8 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
     @defer.inlineCallbacks
     def test_eval_args_only(self):
         self._skipCheck()
-        keys=[]
-        args=['first', 'second']
+        keys = []
+        args = ['first', 'second']
 
         r = yield self.db.eval("return {ARGV[1],ARGV[2]}", keys, args)
         self.assertEqual(r, args)

@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi as redis
 from twisted.internet import defer
 from twisted.python.failure import Failure
 from twisted.trial import unittest
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class TestRedisConnections(unittest.TestCase):
@@ -42,7 +42,7 @@ class TestRedisConnections(unittest.TestCase):
         self.connections.append(connection)
         return connection
 
-    def _getRedisConnection(self, host=redis_host, port=redis_port, db=0):
+    def _getRedisConnection(self, host=REDIS_HOST, port=REDIS_PORT, db=0):
         return redis.Connection(
             host, port, dbid=db, reconnect=False).addCallback(
                 self._db_connected)

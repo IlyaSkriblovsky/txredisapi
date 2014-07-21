@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from tests.mixins import REDIS_HOST, REDIS_PORT
-
-import txredisapi as redis
 from twisted.internet import defer
 from twisted.trial import unittest
+
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class TestRedisSort(unittest.TestCase):
@@ -66,5 +67,3 @@ class TestRedisSort(unittest.TestCase):
 
         r = yield self.db.sort('txredisapi:alphavals', alpha=True)
         self.assertEquals(['apple', 'cat', 'dog'], r)
-
-

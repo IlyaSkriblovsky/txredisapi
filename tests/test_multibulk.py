@@ -15,12 +15,12 @@
 
 import os
 
-import txredisapi as redis
 from twisted.internet import defer
 from twisted.trial import unittest
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class LargeMultiBulk(unittest.TestCase):
@@ -29,7 +29,7 @@ class LargeMultiBulk(unittest.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         self.db = yield redis.Connection(
-            redis_host, redis_port, reconnect=False)
+            REDIS_HOST, REDIS_PORT, reconnect=False)
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -78,7 +78,7 @@ class LargeMultiBulk(unittest.TestCase):
 class NestedMultiBulk(unittest.TestCase):
     @defer.inlineCallbacks
     def testNestedMultiBulkTransaction(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
 
         test1 = {u"foo1": u"bar1", u"something": u"else"}
         test2 = {u"foo2": u"bar2", u"something": u"else"}
@@ -98,5 +98,3 @@ class NestedMultiBulk(unittest.TestCase):
         self.assertEqual(sorted(r[3].values()), sorted(test2.values()))
 
         yield db.disconnect()
-
-

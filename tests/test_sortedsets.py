@@ -13,14 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi as redis
-
 from twisted.internet import defer
 from twisted.trial import unittest
 from twisted.python.failure import Failure
 
-redis_host = "localhost"
-redis_port = 6379
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 
 class SortedSetsTests(unittest.TestCase):
@@ -200,7 +199,7 @@ class SortedSetsTests(unittest.TestCase):
             }),
             'sum': (('sum', sum),  {
                 -1: [('five', -5), ('four', -4), ('three', 0),
-                   ('one', 1), ('two', 2)],
+                     ('one', 1), ('two', 2)],
                 0: [('five', 0), ('four', 0), ('one', 1),
                     ('two', 2), ('three', 3)],
                 1: [('one', 1), ('two', 2), ('four', 4),
@@ -342,7 +341,7 @@ class SortedSetsTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.db = yield redis.Connection(redis_host, redis_port,
+        self.db = yield redis.Connection(REDIS_HOST, REDIS_PORT,
                                          reconnect=False)
 
     def tearDown(self):

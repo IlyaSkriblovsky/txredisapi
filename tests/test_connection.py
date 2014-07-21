@@ -13,41 +13,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi as redis
-
 from twisted.internet import base
 from twisted.internet import defer
 from twisted.trial import unittest
 
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
+
 base.DelayedCall.debug = False
-redis_host = "localhost"
-redis_port = 6379
 
 
 class TestConnectionMethods(unittest.TestCase):
     @defer.inlineCallbacks
     def test_Connection(self):
-        db = yield redis.Connection(redis_host, redis_port, reconnect=False)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_ConnectionDB1(self):
-        db = yield redis.Connection(redis_host, redis_port, dbid=1,
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, dbid=1,
                                     reconnect=False)
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_ConnectionPool(self):
-        db = yield redis.ConnectionPool(redis_host, redis_port, poolsize=2,
+        db = yield redis.ConnectionPool(REDIS_HOST, REDIS_PORT, poolsize=2,
                                         reconnect=False)
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_lazyConnection(self):
-        db = redis.lazyConnection(redis_host, redis_port, reconnect=False)
+        db = redis.lazyConnection(REDIS_HOST, REDIS_PORT, reconnect=False)
         self.assertEqual(isinstance(db._connected, defer.Deferred), True)
         db = yield db._connected
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
@@ -55,7 +55,7 @@ class TestConnectionMethods(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_lazyConnectionPool(self):
-        db = redis.lazyConnectionPool(redis_host, redis_port, reconnect=False)
+        db = redis.lazyConnectionPool(REDIS_HOST, REDIS_PORT, reconnect=False)
         self.assertEqual(isinstance(db._connected, defer.Deferred), True)
         db = yield db._connected
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
@@ -63,14 +63,14 @@ class TestConnectionMethods(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_ShardedConnection(self):
-        hosts = ["%s:%s" % (redis_host, redis_port)]
+        hosts = ["%s:%s" % (REDIS_HOST, REDIS_PORT)]
         db = yield redis.ShardedConnection(hosts, reconnect=False)
         self.assertEqual(isinstance(db, redis.ShardedConnectionHandler), True)
         yield db.disconnect()
 
     @defer.inlineCallbacks
     def test_ShardedConnectionPool(self):
-        hosts = ["%s:%s" % (redis_host, redis_port)]
+        hosts = ["%s:%s" % (REDIS_HOST, REDIS_PORT)]
         db = yield redis.ShardedConnectionPool(hosts, reconnect=False)
         self.assertEqual(isinstance(db, redis.ShardedConnectionHandler), True)
         yield db.disconnect()
