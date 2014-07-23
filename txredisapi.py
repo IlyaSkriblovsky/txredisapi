@@ -41,6 +41,11 @@ from twisted.protocols import policies
 from twisted.python import log
 from twisted.python.failure import Failure
 
+try:
+    import hiredis
+except ImportError:
+    hiredis = None
+
 
 class RedisError(Exception):
     pass
@@ -191,7 +196,7 @@ class LineReceiver(protocol.Protocol, basic._PauseableMixin):
         return self.transport.loseConnection()
 
 
-class RedisProtocol(LineReceiver, policies.TimeoutMixin):
+class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     """
     Redis client protocol.
     """
@@ -357,24 +362,31 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         el = None
         if data is not None:
-            if data and data[0] in _NUM_FIRST_CHARS:  # Most likely a number
-                try:
-                    el = int(data) if data.find('.') == -1 else float(data)
-                except ValueError:
-                    pass
-
-            if el is None:
-                el = data
-                if self.charset is not None:
-                    try:
-                        el = data.decode(self.charset)
-                    except UnicodeDecodeError:
-                        pass
+            el = self.tryConvertData(data)
 
         if self.multi_bulk.pending or self.multi_bulk.items:
             self.handleMultiBulkElement(el)
         else:
             self.replyReceived(el)
+
+    def tryConvertData(self, data):
+        if not isinstance(data, str):
+            return data
+        el = None
+        if data and data[0] in _NUM_FIRST_CHARS:  # Most likely a number
+            try:
+                el = int(data) if data.find('.') == -1 else float(data)
+            except ValueError:
+                pass
+
+        if el is None:
+            el = data
+            if self.charset is not None:
+                try:
+                    el = data.decode(self.charset)
+                except UnicodeDecodeError:
+                    pass
+        return el
 
     def handleMultiBulkElement(self, element):
         self.multi_bulk.append(element)
@@ -395,27 +407,31 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
             reply = self.multi_bulk.items
             self.multi_bulk = MultiBulkStorage()
 
-            if self.inTransaction and reply is not None:  # watch or multi has been called
-                if self.transactions > 0:
-                    # multi: this must be an exec [commit] reply
-                    self.transactions -= len(reply)
-                if self.transactions == 0:
-                    self.commit_cc()
-                if self.inTransaction:  # watch but no multi: process the reply as usual
-                    f = self.post_proc[1:]
-                    if len(f) == 1 and callable(f[0]):
-                        reply = f[0](reply)
-                else:  # multi: this must be an exec reply
-                    tmp = []
-                    for f, v in zip(self.post_proc[1:], reply):
-                        if callable(f):
-                            tmp.append(f(v))
-                        else:
-                            tmp.append(v)
-                        reply = tmp
-                self.post_proc = []
+            reply = self.handleTransactionData(reply)
 
             self.replyReceived(reply)
+
+    def handleTransactionData(self, reply):
+        if self.inTransaction and isinstance(reply, list):  # watch or multi has been called
+            if self.transactions > 0:
+                # multi: this must be an exec [commit] reply
+                self.transactions -= len(reply)
+            if self.transactions == 0:
+                self.commit_cc()
+            if self.inTransaction:  # watch but no multi: process the reply as usual
+                f = self.post_proc[1:]
+                if len(f) == 1 and callable(f[0]):
+                    reply = f[0](reply)
+            else:  # multi: this must be an exec reply
+                tmp = []
+                for f, v in zip(self.post_proc[1:], reply):
+                    if callable(f):
+                        tmp.append(f(v))
+                    else:
+                        tmp.append(v)
+                    reply = tmp
+            self.post_proc = []
+        return reply
 
     def replyReceived(self, reply):
         """
@@ -1573,6 +1589,36 @@ class RedisProtocol(LineReceiver, policies.TimeoutMixin):
     def pfmerge(self, destKey, sourceKeys, *args):
         sourceKeys = list_or_args("pfmerge", sourceKeys, args)
         return self.execute_command("PFMERGE", destKey, *sourceKeys)
+
+
+class HiredisProtocol(BaseRedisProtocol):
+    def __init__(self, *args, **kwargs):
+        BaseRedisProtocol.__init__(self, *args, **kwargs)
+        self._reader = hiredis.Reader(protocolError=InvalidData,
+                                      replyError=ResponseError)
+
+    def dataReceived(self, data, unpause=False):
+        self.resetTimeout()
+        if data:
+            self._reader.feed(data)
+        res = self._reader.gets()
+        while res is not False:
+            if isinstance(res, basestring):
+                res = self.tryConvertData(res)
+            elif isinstance(res, list):
+                res = map(self.tryConvertData, res)
+            if res == "QUEUED":
+                self.transactions += 1
+            else:
+                res = self.handleTransactionData(res)
+
+            self.replyReceived(res)
+            res = self._reader.gets()
+
+if hiredis is not None:
+    RedisProtocol = HiredisProtocol
+else:
+    RedisProtocol = BaseRedisProtocol
 
 
 class MonitorProtocol(RedisProtocol):
