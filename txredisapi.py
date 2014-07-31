@@ -1,4 +1,4 @@
-# codingr utf-8
+# coding: utf-8
 # Copyright 2009 Alexandre Fiori
 # https://github.com/fiorix/txredisapi
 #
@@ -2033,7 +2033,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
     @defer.inlineCallbacks
     def getConnection(self, put_back=False):
-        if not self.size:
+        if not self.continueTrying and not self.size:
             raise ConnectionError("Not connected")
 
         while True:
