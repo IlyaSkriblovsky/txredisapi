@@ -1391,7 +1391,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         if self.inTransaction:
             self.inTransaction = False
             self.inMulti = False
-            self.factory.connectionQueue.put(self)
+            self.factory.returnConnection(self)
 
     def watch(self, keys):
         if not self.inTransaction:
@@ -1489,6 +1489,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.pipelining = False
             self.pipelined_commands = []
             self.pipelined_replies = []
+            self.factory.returnConnection(self)
 
     # Publish/Subscribe
     # see the SubscriberProtocol for subscribing to channels
@@ -1759,12 +1760,12 @@ class ConnectionHandler(object):
                 try:
                     d = protocol_method(*args, **kwargs)
                 except:
-                    self._factory.connectionQueue.put(connection)
+                    self._factory.returnConnection(connection)
                     raise
 
                 def put_back(reply):
-                    if not connection.inTransaction:
-                        self._factory.connectionQueue.put(connection)
+                    if not (connection.inTransaction or connection.pipelining):
+                        self._factory.returnConnection(connection)
                     return reply
 
                 def switch_to_errback(reply):
@@ -2065,7 +2066,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             self.pool.remove(conn)
         except Exception, e:
             log.msg("Could not remove connection from pool: %s" % str(e))
-
         self.size = len(self.pool)
         if not self.size and self._waitingForEmptyPool:
             deferreds = self._waitingForEmptyPool
@@ -2103,8 +2103,11 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                 log.msg('Discarding dead connection.')
             else:
                 if put_back:
-                    self.connectionQueue.put(conn)
+                    self.returnConnection(conn)
                 defer.returnValue(conn)
+
+    def returnConnection(self, conn):
+        self.connectionQueue.put(conn)
 
 
 class SubscriberFactory(RedisFactory):

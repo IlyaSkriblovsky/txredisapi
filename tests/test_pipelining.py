@@ -142,3 +142,20 @@ class TestRedisConnections(unittest.TestCase):
         except NotImplementedError, e:
             self.assertTrue("not supported" in str(e).lower())
         yield db.disconnect()
+
+    @defer.inlineCallbacks
+    def test_ConnectionPool_connection_return(self):
+        db = yield txredisapi.ConnectionPool(REDIS_HOST, REDIS_PORT, poolsize=1,
+                                             reconnect=False)
+        pipeline = yield db.pipeline()
+        pipeline.set("txredisapi:test_pipeline", "foo")
+
+        set_deferred = db.set("txredisapi:test_pipeline1", "bar")
+        self.assertFalse(set_deferred.called)
+
+        yield pipeline.execute_pipeline()
+
+        self.assertTrue(set_deferred.called)
+        yield set_deferred
+
+        yield db.disconnect()
