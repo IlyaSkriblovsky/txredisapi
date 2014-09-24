@@ -33,6 +33,9 @@ class myProtocol(redis.SubscriberProtocol):
         print "use the redis client to send messages:"
         print "$ redis-cli publish zz test"
         print "$ redis-cli publish foo.bar hello world"
+
+        #self.auth("foobared")
+
         self.subscribe("zz")
         self.psubscribe("foo.*")
         # reactor.callLater(10, self.unsubscribe, "zz")
