@@ -46,7 +46,7 @@ class TestScan(unittest.TestCase, RedisVersionCheckMixin):
     @inlineCallbacks
     def test_scan(self):
         self._skipCheck()
-        yield self.db.mset({k: 'value' for k in self.KEYS})
+        yield self.db.mset(dict((k, 'value') for k in self.KEYS))
 
         cursor, result = yield self.db.scan(pattern=self.PATTERN)
 
