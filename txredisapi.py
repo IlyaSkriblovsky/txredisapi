@@ -554,6 +554,26 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("KEYS", pattern)
 
+    @staticmethod
+    def _build_scan_args(cursor, pattern, count):
+        """
+        Construct arguments list for SCAN, SSCAN, HSCAN, ZSCAN commands
+        """
+        args = [cursor]
+        if pattern is not None:
+            args.extend(("MATCH", pattern))
+        if count is not None:
+            args.extend(("COUNT", count))
+
+        return args
+
+    def scan(self, cursor=0, pattern=None, count=None):
+        """
+        Incrementally iterate the keys in database
+        """
+        args = self._build_scan_args(cursor, pattern, count)
+        return self.execute_command("SCAN", *args)
+
     def randomkey(self):
         """
         Return a random key from the key space
@@ -1013,6 +1033,10 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("SRANDMEMBER", key)
 
+    def sscan(self, key, cursor=0, pattern=None, count=None):
+        args = self._build_scan_args(cursor, pattern, count)
+        return self.execute_command("SSCAN", key, *args)
+
     # Commands operating on sorted zsets (sorted sets)
     def zadd(self, key, score, member, *args):
         """
@@ -1218,6 +1242,10 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             pieces.extend(("AGGREGATE", aggregate))
         return self.execute_command(*pieces)
 
+    def zscan(self, key, cursor=0, pattern=None, count=None):
+        args = self._build_scan_args(cursor, pattern, count)
+        return self.execute_command("ZSCAN", key, *args)
+
     # Commands operating on hashes
     def hset(self, key, field, value):
         """
@@ -1305,6 +1333,10 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         f = lambda d: dict(zip(d[::2], d[1::2]))
         return self.execute_command("HGETALL", key, post_proc=f)
+
+    def hscan(self, key, cursor=0, pattern=None, count=None):
+        args = self._build_scan_args(cursor, pattern, count)
+        return self.execute_command("HSCAN", key, *args)
 
     # Sorting
     def sort(self, key, start=None, end=None, by=None, get=None,
