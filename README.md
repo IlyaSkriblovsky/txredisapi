@@ -638,6 +638,7 @@ Thanks to (in no particular order):
 
   - Free connection selection algorithm for pools.
   - Non-unicode charset fixes.
+  - SCAN commands
 
 - Matt Pizzimenti (mjpizz)
 
