@@ -15,8 +15,15 @@
 
 from twisted.trial import unittest
 from twisted.internet import defer
+import os
 
-REDIS_HOST = "localhost"
+s = os.getenv("DBREDIS_1_PORT_6379_TCP_ADDR")
+
+if s is not None:
+    REDIS_HOST = "dbredis_1"
+else:
+    REDIS_HOST = "localhost"
+
 REDIS_PORT = 6379
 
 

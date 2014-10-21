@@ -1,0 +1,12 @@
+web:
+  build: .
+  working_dir: /txredisapi
+  command: trial tests
+  ports:
+    - "8000:8000"
+  links:
+    - dbredis
+  volumes:
+    - .:/txredisapi
+dbredis:
+  image: redis

@@ -1,0 +1,6 @@
+Docker and Fig testing for txredisapi:
+
+- Install Fig and its dependencies (http://www.fig.sh/install.html)
+- fig up
+
+
