@@ -648,6 +648,13 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("FLUSHALL")
 
+    def time(self):
+        """
+        Returns the current server time as a two items lists: a Unix timestamp
+        and the amount of microseconds already elapsed in the current second
+        """
+        return self.execute_command("TIME")
+
     # Commands operating on string values
     def set(self, key, value, expire=None, pexpire=None,
             only_if_not_exists=False, only_if_exists=False):
