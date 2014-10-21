@@ -137,3 +137,15 @@ class TestRedisConnections(unittest.TestCase):
         result_2 = yield db.get(key)
         self.assertEqual(result_2, "foo")
         yield db.disconnect()
+
+    @defer.inlineCallbacks
+    def testRedisOperationTime(self):
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
+
+        time = yield db.time()
+        self.assertIsInstance(time, list)
+        self.assertEqual(len(time), 2)
+        self.assertIsInstance(time[0], int)
+        self.assertIsInstance(time[1], int)
+
+        yield db.disconnect()
