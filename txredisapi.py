@@ -215,6 +215,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         self.transactions = 0
         self.inTransaction = False
+        self.inMulti = False
         self.unwatch_cc = lambda: ()
         self.commit_cc = lambda: ()
 
@@ -418,11 +419,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 self.transactions -= len(reply)
             if self.transactions == 0:
                 self.commit_cc()
-            if self.inTransaction:  # watch but no multi: process the reply as usual
-                f = self.post_proc[1:]
-                if len(f) == 1 and callable(f[0]):
-                    reply = f[0](reply)
-            else:  # multi: this must be an exec reply
+            if not self.inTransaction:  # multi: this must be an exec reply
                 tmp = []
                 for f, v in zip(self.post_proc[1:], reply):
                     if callable(f):
@@ -494,7 +491,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             if self.pipelining:
                 self.pipelined_replies.append(r)
 
-            if self.inTransaction:
+            if self.inMulti:
                 self.post_proc.append(kwargs.get("post_proc"))
             else:
                 if "post_proc" in kwargs:
@@ -1376,11 +1373,13 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     def _clear_txstate(self):
         if self.inTransaction:
             self.inTransaction = False
+            self.inMulti = False
             self.factory.connectionQueue.put(self)
 
     def watch(self, keys):
         if not self.inTransaction:
             self.inTransaction = True
+            self.inMulti = False
             self.unwatch_cc = self._clear_txstate
             self.commit_cc = lambda: ()
         if isinstance(keys, (str, unicode)):
@@ -1399,6 +1398,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     # must be executed.
     def multi(self, keys=None):
         self.inTransaction = True
+        self.inMulti = True
         self.unwatch_cc = lambda: ()
         self.commit_cc = self._clear_txstate
         if keys is not None:
@@ -1423,12 +1423,12 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             return response
 
     def commit(self):
-        if self.inTransaction is False:
+        if self.inMulti is False:
             raise RedisError("Not in transaction")
         return self.execute_command("EXEC").addCallback(self._commit_check)
 
     def discard(self):
-        if self.inTransaction is False:
+        if self.inMulti is False:
             raise RedisError("Not in transaction")
         self.post_proc = []
         self.transactions = 0
