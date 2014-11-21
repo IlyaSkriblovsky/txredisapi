@@ -1423,12 +1423,12 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             return response
 
     def commit(self):
-        if self.inTransaction is False:
+        if self.inMulti is False:
             raise RedisError("Not in transaction")
         return self.execute_command("EXEC").addCallback(self._commit_check)
 
     def discard(self):
-        if self.inTransaction is False:
+        if self.inMulti is False:
             raise RedisError("Not in transaction")
         self.post_proc = []
         self.transactions = 0
