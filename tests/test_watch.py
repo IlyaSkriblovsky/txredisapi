@@ -128,3 +128,20 @@ class TestRedisConnections(unittest.TestCase):
         self.assertEqual({"foo": "bar", "bar": "foo"}, h0)
         self.assertEqual(h0, h1)
         self.assertEqual(h0, h2)
+
+    @defer.inlineCallbacks
+    def testRedisWithAsyncCommandsDuringWatch(self):
+        yield self.db.hset(self._KEYS[0], "foo", "bar")
+        yield self.db.hset(self._KEYS[0], "bar", "foo")
+
+        h0 = yield self.db.hgetall(self._KEYS[0])
+        t = yield self.db.watch(self._KEYS[0])
+        (h1, h2) = yield defer.gatherResults([
+            t.hgetall(self._KEYS[0]),
+            t.hgetall(self._KEYS[0]),
+        ], consumeErrors=True)
+        yield t.unwatch()
+
+        self.assertEqual({"foo": "bar", "bar": "foo"}, h0)
+        self.assertEqual(h0, h1)
+        self.assertEqual(h0, h2)
