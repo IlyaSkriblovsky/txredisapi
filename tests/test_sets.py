@@ -160,3 +160,22 @@ class SetsTests(unittest.TestCase):
         self.assertEqual(r, False)
         r = yield self.db.smembers(self._KEYS[1])
         self.assertEqual(r, set([1]))
+
+    @defer.inlineCallbacks
+    def test_srandmember(self):
+        l = range(10)
+        yield self.db.sadd(self._KEYS[0], l)
+        for i in l:
+            r = yield self.db.srandmember(self._KEYS[0])
+            self.assertIn(r, l)
+
+    @defer.inlineCallbacks
+    def test_spop(self):
+        l = range(10)
+        yield self.db.sadd(self._KEYS[0], l)
+        popped = set()
+        for i in l:
+            r = yield self.db.spop(self._KEYS[0])
+            self.assertNotIn(r, popped)
+            popped.add(r)
+        self.assertEqual(set(l), popped)

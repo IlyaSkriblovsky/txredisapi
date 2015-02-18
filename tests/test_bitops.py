@@ -74,6 +74,11 @@ class TestBitOps(unittest.TestCase, Redis26CheckMixin):
         self.assertEqual(r, 4)
         r = yield self.db.bitcount(key, 1, 1)
         self.assertEqual(r, 6)
+        # Ensure that the error is raised
+        d = defer.maybeDeferred(self.db.bitcount, key, start=1)
+        self.assertFailure(d, redis.RedisError)
+        d1 = defer.maybeDeferred(self.db.bitcount, key, end=1)
+        self.assertFailure(d1, redis.RedisError)
 
     def test_bitop_not(self):
         return self._test_bitop([operator.__not__, operator.not_,
@@ -102,6 +107,10 @@ class TestBitOps(unittest.TestCase, Redis26CheckMixin):
                                 '\x9c\x9c\x9c\x9c',
                                 '\x6c\x6c\x6c\x6c',
                                 '\xf0\xf0\xf0\xf0')
+
+    def test_bitop_invalid(self):
+        self.assertFailure(self.db.bitop('test', 'test', 'test'),
+                           redis.InvalidData)
 
     @defer.inlineCallbacks
     def _test_bitop(self, op_list, value1, value2, expected):
