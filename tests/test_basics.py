@@ -21,8 +21,7 @@ from .mixins import REDIS_HOST, REDIS_PORT
 
 
 class TestBasics(unittest.TestCase):
-    _KEYS = ['_test_key1', '_test_key2',
-             '_test_key3', '_test_key4']
+    _KEYS = ['_test_key1', '_test_key2', '_test_key3']
     skipTeardown = False
 
     @defer.inlineCallbacks

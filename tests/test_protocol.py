@@ -54,7 +54,7 @@ class TestLineReciever(unittest.TestCase):
         self.proto._rcvd_line = None
         self.proto.dataReceived(s)
         self.assertFalse(self.transport.connected)
-        self.assertIsNone(self.proto._rcvd_line)
+        self.assertIs(self.proto._rcvd_line, None)
 
     def test_clear_line_buffer(self):
         self.proto.dataReceived(self.S)
