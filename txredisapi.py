@@ -129,6 +129,7 @@ class MultiBulkStorage(object):
 
 
 class LineReceiver(protocol.Protocol, basic._PauseableMixin):
+    callLater = reactor.callLater
     line_mode = 1
     __buffer = ''
     delimiter = '\r\n'
@@ -178,7 +179,7 @@ class LineReceiver(protocol.Protocol, basic._PauseableMixin):
         self.line_mode = 1
         if extra:
             self.pauseProducing()
-            reactor.callLater(0, self.dataReceived, extra, True)
+            self.callLater(0, self.dataReceived, extra, True)
 
     def setRawMode(self):
         self.line_mode = 0
