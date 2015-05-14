@@ -1459,19 +1459,28 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         # Flush all the commands at once to redis. Wait for all replies
         # to come back using a deferred list.
-        try:
-            self.transport.write("".join(self.pipelined_commands))
-            results = yield defer.DeferredList(
-                deferredList=self.pipelined_replies,
-                fireOnOneErrback=True,
-                consumeErrors=True,
-                )
-            defer.returnValue([value for success, value in results])
+        self.transport.write("".join(self.pipelined_commands))
 
-        finally:
+        d = defer.DeferredList(
+            deferredList=self.pipelined_replies,
+            fireOnOneErrback=True,
+            consumeErrors=True,
+            )
+
+        d.addBoth(self._clear_pipeline_state)
+
+        results = yield d
+
+        defer.returnValue([value for success, value in results])
+
+    def _clear_pipeline_state(self, response):
+        if self.pipelining:
             self.pipelining = False
             self.pipelined_commands = []
             self.pipelined_replies = []
+            self.factory.connectionQueue.put(self)
+
+        return response
 
     # Publish/Subscribe
     # see the SubscriberProtocol for subscribing to channels
@@ -1746,7 +1755,7 @@ class ConnectionHandler(object):
                     raise
 
                 def put_back(reply):
-                    if not connection.inTransaction:
+                    if not connection.inTransaction and not connection.pipelining:
                         self._factory.connectionQueue.put(connection)
                     return reply
 
