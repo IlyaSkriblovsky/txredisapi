@@ -197,6 +197,23 @@ class LineReceiver(protocol.Protocol, basic._PauseableMixin):
         return self.transport.loseConnection()
 
 
+class ReplyQueue(defer.DeferredQueue):
+    """
+    Subclass defer.DeferredQueue to maintain consistency of
+    producers / consumers in light of defer.cancel
+    """
+    def _cancelGet(self, d):
+        # rather than remove(d), the default twisted behavior
+        # we need to maintain an entry in the waiting list
+        # because the reply code assumes that every call
+        # to transport.write() generates a corresponding
+        # reply value in the queue.
+        # so we will just replace the cancelled deferred
+        # with a noop
+        i = self.waiting.index(d)
+        self.waiting[i] = defer.Deferred()
+
+
 class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     """
     Redis client protocol.
@@ -212,7 +229,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.post_proc = []
         self.multi_bulk = MultiBulkStorage()
 
-        self.replyQueue = defer.DeferredQueue()
+        self.replyQueue = ReplyQueue()
 
         self.transactions = 0
         self.inTransaction = False
