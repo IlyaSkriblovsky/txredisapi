@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import txredisapi as redis
 from twisted.internet import defer
 from twisted.trial import unittest
 
+import txredisapi as redis
+
+from tests.mixins import REDIS_HOST, REDIS_PORT
 
 class TestConnectionCharset(unittest.TestCase):
     TEST_KEY = 'txredisapi:test_key'
@@ -25,7 +27,7 @@ class TestConnectionCharset(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_charset_None(self):
-        db = yield redis.Connection(charset=None)
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, charset=None)
 
         yield db.set(self.TEST_KEY, self.TEST_VALUE_BINARY)
         result = yield db.get(self.TEST_KEY)
@@ -37,7 +39,7 @@ class TestConnectionCharset(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_charset_default(self):
-        db = yield redis.Connection()
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT)
 
         yield db.set(self.TEST_KEY, self.TEST_VALUE_UNICODE)
         result = yield db.get(self.TEST_KEY)
