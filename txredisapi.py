@@ -1711,7 +1711,7 @@ class SubscriberProtocol(RedisProtocol):
                 self.messageReceived(*reply[-3:])
             else:
                 self.replyQueue.put(reply[-3:])
-        elif isinstance(reply, Exception):
+        else:
             self.replyQueue.put(reply)
 
     def subscribe(self, channels):

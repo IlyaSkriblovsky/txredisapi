@@ -104,3 +104,38 @@ class TestSubscriberProtocol(unittest.TestCase):
         self.assertEqual(reply, [u"punsubscribe", u"test_punsubscribe1.*", 1])
         reply = yield self.db.punsubscribe("test_punsubscribe2.*")
         self.assertEqual(reply, [u"punsubscribe", u"test_punsubscribe2.*", 0])
+
+
+class TestAuthenticatedSubscriberProtocol(unittest.TestCase):
+    timeout = 5
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        meta = yield redis.Connection(REDIS_HOST, REDIS_PORT)
+        yield meta.execute_command("config", "set", "requirepass", "password")
+        yield meta.disconnect()
+        self.addCleanup(self.removePassword)
+
+        factory = redis.RedisFactory(None, dbid=0, poolsize=1, password="password")
+        factory.protocol = redis.SubscriberProtocol
+        factory.continueTrying = False
+        reactor.connectTCP(REDIS_HOST, REDIS_PORT, factory)
+        self.db = yield factory.deferred
+
+    @defer.inlineCallbacks
+    def removePassword(self):
+        meta = yield redis.Connection(REDIS_HOST, REDIS_PORT, password="password")
+        yield meta.execute_command("config", "set", "requirepass", "")
+        yield meta.disconnect()
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.db.disconnect()
+
+    @defer.inlineCallbacks
+    def testSubscribe(self):
+        reply = yield self.db.subscribe("test_subscribe1")
+        self.assertEqual(reply, [u"subscribe", u"test_subscribe1", 1])
+
+        reply = yield self.db.subscribe("test_subscribe2")
+        self.assertEqual(reply, [u"subscribe", u"test_subscribe2", 2])
