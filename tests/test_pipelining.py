@@ -104,6 +104,29 @@ class TestRedisConnections(unittest.TestCase):
         yield db.disconnect()
 
     @defer.inlineCallbacks
+    def test_ConnectionPool_managed_correctly(self):
+
+        db = yield txredisapi.ConnectionPool(REDIS_HOST, REDIS_PORT, poolsize=1,
+                                             reconnect=False)
+
+        yield db.set('key1', 'value1')
+
+        pipeline = yield db.pipeline()
+        pipeline.get('key1')
+
+        # We will yield after we finish the pipeline so we won't block here
+        d = db.set('key2', 'value2')
+
+        results = yield pipeline.execute_pipeline()
+
+        # If the pipeline is managed correctly, there should only be one
+        # response here
+        self.assertEqual(len(results), 1)
+
+        yield d
+        yield db.disconnect()
+
+    @defer.inlineCallbacks
     def test_lazyConnection(self):
 
         db = txredisapi.lazyConnection(REDIS_HOST, REDIS_PORT, reconnect=False)
