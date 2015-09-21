@@ -1748,6 +1748,9 @@ class ConnectionHandler(object):
     def __init__(self, factory):
         self._factory = factory
         self._connected = factory.deferred
+        self._waitingForConnection = set()
+
+        self._connected.addErrback(self.cancelWaiting)
 
     def disconnect(self):
         self._factory.continueTrying = 0
@@ -1759,9 +1762,18 @@ class ConnectionHandler(object):
 
         return self._factory.waitForEmptyPool()
 
+    def cancelWaiting(self, _):
+        for d in list(self._waitingForConnection):
+            self._waitingForConnection.discard(d)
+            d.errback(ConnectionError("Not connected"))
+
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
             d = self._factory.getConnection()
+
+            if not self._connected.called:
+                self._waitingForConnection.add(d)
+                d.addCallback(self._waitingForConnection.discard, d)
 
             def callback(connection):
                 protocol_method = getattr(connection, method)
@@ -2114,6 +2126,19 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                 if put_back:
                     self.connectionQueue.put(conn)
                 defer.returnValue(conn)
+
+    def clientConnectionFailed(self, connector, reason):
+        protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+
+        if self.maxRetries is not None and (self.retries > self.maxRetries):
+            if not self.size:
+                self.continueTrying = 0
+
+                if self.deferred:
+                    self.deferred.errback(reason)
+                    self.deferred = None
+            else:
+                self.retries = 0
 
 
 class SubscriberFactory(RedisFactory):
