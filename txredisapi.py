@@ -1762,10 +1762,12 @@ class ConnectionHandler(object):
 
         return self._factory.waitForEmptyPool()
 
-    def cancelWaiting(self, _):
+    def cancelWaiting(self, failure):
         for d in list(self._waitingForConnection):
             self._waitingForConnection.discard(d)
             d.errback(ConnectionError("Not connected"))
+
+        return failure
 
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
