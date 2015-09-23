@@ -1769,13 +1769,17 @@ class ConnectionHandler(object):
 
         return failure
 
+    def discardWaiting(self, res, d):
+        self._waitingForConnection.discard(d)
+        return res
+
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
             d = self._factory.getConnection()
 
             if not self._connected.called:
                 self._waitingForConnection.add(d)
-                d.addCallback(self._waitingForConnection.discard, d)
+                d.addCallback(self.discardWaiting, d)
 
             def callback(connection):
                 protocol_method = getattr(connection, method)
