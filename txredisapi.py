@@ -250,7 +250,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 response = yield self.auth(self.factory.password)
                 if isinstance(response, ResponseError):
                     raise response
-            except Exception, e:
+            except Exception as e:
                 self.factory.continueTrying = False
                 self.transport.loseConnection()
 
@@ -265,7 +265,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 response = yield self.select(self.factory.dbid)
                 if isinstance(response, ResponseError):
                     raise response
-            except Exception, e:
+            except Exception as e:
                 self.factory.continueTrying = False
                 self.transport.loseConnection()
 
@@ -479,7 +479,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                         raise InvalidData("Encoding charset was not specified")
                     try:
                         cmd = s.encode(self.charset, self.errors)
-                    except UnicodeEncodeError, e:
+                    except UnicodeEncodeError as e:
                         raise InvalidData(
                             "Error encoding unicode value '%s': %s" %
                             (repr(s), e))
@@ -2030,7 +2030,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             raise ValueError("Redis poolsize must be an integer, not %s" %
                              repr(poolsize))
 
-        if not isinstance(dbid, (int, types.NoneType)):
+        if not isinstance(dbid, (int, type(None))):
             raise ValueError("Redis dbid must be an integer, not %s" %
                              repr(dbid))
 
@@ -2072,7 +2072,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     def delConnection(self, conn):
         try:
             self.pool.remove(conn)
-        except Exception, e:
+        except Exception as e:
             log.msg("Could not remove connection from pool: %s" % str(e))
 
         self.size = len(self.pool)

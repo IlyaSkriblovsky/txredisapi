@@ -17,6 +17,7 @@
 # run: twistd -ny monitor.tac
 # it takes the full connection so no extra commands can be issued
 
+from __future__ import print_function
 
 import txredisapi
 
@@ -26,15 +27,15 @@ from twisted.application import service
 
 class myMonitor(txredisapi.MonitorProtocol):
     def connectionMade(self):
-        print "waiting for monitor data"
-        print "use the redis client to send commands in another terminal"
+        print("waiting for monitor data")
+        print("use the redis client to send commands in another terminal")
         self.monitor()
 
     def messageReceived(self, message):
-        print ">> %s" % message
+        print(">> %s" % message)
 
     def connectionLost(self, reason):
-        print "lost connection:", reason
+        print("lost connection:", reason)
 
 
 class myFactory(txredisapi.MonitorFactory):

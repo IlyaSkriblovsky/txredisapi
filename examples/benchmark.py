@@ -1,4 +1,6 @@
 # coding: utf-8
+from __future__ import print_function
+
 import time
 from twisted.internet import defer
 from twisted.internet import reactor
@@ -18,7 +20,7 @@ def test_setget():
     for i in xrange(N):
         yield conn.set(key, 'test_data')
         yield conn.get(key)
-    print "done set-get: %.4fs." % ((time.time() - start) / N)
+    print("done set-get: %.4fs." % ((time.time() - start) / N))
 
 
 @defer.inlineCallbacks
@@ -30,7 +32,7 @@ def test_lrange():
     start = time.time()
     for i in xrange(N):
         yield conn.lrange(key, 0, 999)
-    print "done lrange: %.4fs." % ((time.time() - start) / N)
+    print("done lrange: %.4fs." % ((time.time() - start) / N))
 
 
 @defer.inlineCallbacks

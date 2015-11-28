@@ -150,7 +150,7 @@ class TestRedisConnections(unittest.TestCase):
         try:
             yield db.pipeline()
             raise self.failureException("Expected sharding to disallow pipelining")
-        except NotImplementedError, e:
+        except NotImplementedError as e:
             self.assertTrue("not supported" in str(e).lower())
         yield db.disconnect()
 
@@ -162,6 +162,6 @@ class TestRedisConnections(unittest.TestCase):
         try:
             yield db.pipeline()
             raise self.failureException("Expected sharding to disallow pipelining")
-        except NotImplementedError, e:
+        except NotImplementedError as e:
             self.assertTrue("not supported" in str(e).lower())
         yield db.disconnect()

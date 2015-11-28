@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+from __future__ import print_function
+
 import txredisapi as redis
 
 from twisted.internet import defer
@@ -42,7 +44,7 @@ def transactions():
     txn.incr('test:a')
     txn.lpush('test:l', 'test')
     r = yield txn.commit()  # Commit txn,call txn.discard() to discard it
-    print 'Transaction1: %s' % r
+    print('Transaction1: %s' % r)
 
     # Another transaction with a few values to watch on
     txn1 = yield conn.multi(['test:l', 'test:h'])
@@ -51,7 +53,7 @@ def transactions():
     # Transactions with watched keys will fail if any of the keys are modified
     # externally after calling .multi() and before calling transaction.commit()
     r = yield txn1.commit()  # This will raise if WatchError if txn1 fails.
-    print 'Transaction2: %s' % r
+    print('Transaction2: %s' % r)
     yield conn.disconnect()
 
 

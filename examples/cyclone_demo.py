@@ -16,6 +16,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from __future__ import print_function
+
 import collections
 import functools
 import sys
@@ -111,7 +113,7 @@ class TextHandler(cyclone.web.RequestHandler, RedisMixin):
     def get(self, key):
         try:
             value = yield self.dbconn.get(key)
-        except Exception, e:
+        except Exception as e:
             log.err("Redis failed to get('%s'): %s" % (key, str(e)))
             raise cyclone.web.HTTPError(503)
 
@@ -123,7 +125,7 @@ class TextHandler(cyclone.web.RequestHandler, RedisMixin):
         value = self.get_argument("value")
         try:
             yield self.dbconn.set(key, value)
-        except Exception, e:
+        except Exception as e:
             r = (key, value, str(e))
             log.err("Redis failed to set('%s', '%s'): %s" % r)
             raise cyclone.web.HTTPError(503)
@@ -135,7 +137,7 @@ class TextHandler(cyclone.web.RequestHandler, RedisMixin):
     def delete(self, key):
         try:
             n = yield self.dbconn.delete(key)
-        except Exception, e:
+        except Exception as e:
             log.err("Redis failed to del('%s'): %s" % (key, str(e)))
             raise cyclone.web.HTTPError(503)
 
@@ -150,7 +152,7 @@ class QueueHandler(cyclone.web.RequestHandler, RedisMixin):
     def get(self, channels):
         try:
             channels = channels.split(",")
-        except Exception, e:
+        except Exception as e:
             log.err("Could not split channel names: %s" % str(e))
             raise cyclone.web.HTTPError(400, str(e))
 
@@ -169,7 +171,7 @@ class QueueHandler(cyclone.web.RequestHandler, RedisMixin):
 
         try:
             n = yield self.dbconn.publish(channel, message.encode("utf-8"))
-        except Exception, e:
+        except Exception as e:
             log.msg("Redis failed to publish('%s', '%s'): %s" %
                     (channel, repr(message), str(e)))
             raise cyclone.web.HTTPError(503)

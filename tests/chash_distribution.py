@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+from __future__ import print_function
+
 from txredisapi import HashRing
 from collections import defaultdict
 
@@ -12,6 +14,6 @@ if __name__ == "__main__":
         key_history[x] = ch.get_node("k:%d" % x)
         s = key_history[x]
         node_histogram[s] = node_histogram[s] + 1
-    print "server\t\tkeys:"
+    print("server\t\tkeys:")
     for a in node_histogram.keys():
-        print "%s:\t%d" % (a, node_histogram[a])
+        print("%s:\t%d" % (a, node_histogram[a]))
