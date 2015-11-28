@@ -20,7 +20,7 @@ setuptools.setup(
     name="txredisapi",
     version="1.3",
     py_modules=["txredisapi"],
-    install_requires=["twisted"],
+    install_requires=["twisted", "six"],
     author="Alexandre Fiori",
     author_email="fiorix@gmail.com",
     url="http://github.com/fiorix/txredisapi",
