@@ -29,7 +29,6 @@ import collections
 import functools
 import operator
 import re
-import types
 import warnings
 import zlib
 import string
@@ -193,6 +192,8 @@ class LineReceiver(protocol.Protocol, basic._PauseableMixin):
         raise NotImplementedError
 
     def sendLine(self, line):
+        if isinstance(line, six.text_type):
+            line = line.encode()
         return self.transport.write(line + self.delimiter)
 
     def lineLengthExceeded(self, line):
@@ -465,35 +466,40 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             raise r
         return r
 
+    def _build_command(self, *args, **kwargs):
+        # Build the redis command.
+        cmds = bytearray()
+        cmd_count = 0
+        cmd_template = six.b("$%d\r\n%s\r\n")
+        for s in args:
+            if isinstance(s, six.binary_type):
+                cmd = s
+            elif isinstance(s, six.text_type):
+                if self.charset is None:
+                    raise InvalidData("Encoding charset was not specified")
+                try:
+                    cmd = s.encode(self.charset, self.errors)
+                except UnicodeEncodeError as e:
+                    raise InvalidData(
+                        "Error encoding unicode value '%s': %s" %
+                        (repr(s), e))
+            elif isinstance(s, float):
+                cmd = format(s, "f")
+            else:
+                cmd = str(s).format()
+            cmds.extend(cmd_template % (len(cmd), cmd))
+            cmd_count += 1
+
+        command = bytes(six.b("*%d\r\n") % (cmd_count,) + cmds)
+        if not isinstance(command, six.binary_type):
+            command = command.encode()
+        return command
+
     def execute_command(self, *args, **kwargs):
         if self.connected == 0:
             raise ConnectionError("Not connected")
         else:
-
-            # Build the redis command.
-            cmds = []
-            cmd_template = "$%s\r\n%s\r\n"
-            for s in args:
-                if isinstance(s, six.binary_type):
-                    cmd = s
-                elif isinstance(s, six.text_type):
-                    if self.charset is None:
-                        raise InvalidData("Encoding charset was not specified")
-                    try:
-                        cmd = s.encode(self.charset, self.errors)
-                    except UnicodeEncodeError as e:
-                        raise InvalidData(
-                            "Error encoding unicode value '%s': %s" %
-                            (repr(s), e))
-                elif isinstance(s, float):
-                    cmd = format(s, "f")
-                else:
-                    cmd = str(s)
-                cmds.append(cmd_template % (len(cmd), cmd))
-            command = "*%s\r\n%s" % (len(cmds), "".join(cmds))
-            if not isinstance(command, six.binary_type):
-                command = command.encode()
-
+            command = self._build_command(*args, **kwargs)
             # When pipelining, buffer this command into our list of
             # pipelined commands. Otherwise, write the command immediately.
             if self.pipelining:
@@ -1776,7 +1782,8 @@ class ConnectionHandler(object):
                     raise
 
                 def put_back(reply):
-                    if not connection.inTransaction and not connection.pipelining:
+                    if not connection.inTransaction and \
+                       not connection.pipelining:
                         self._factory.connectionQueue.put(connection)
                     return reply
 

@@ -12,7 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import six
+
 import txredisapi as redis
+
 from twisted.trial import unittest
 from twisted.internet.protocol import ClientFactory
 from twisted.test.proto_helpers import StringTransportWithDisconnection
@@ -32,7 +36,7 @@ class LineReceiverSubclass(redis.LineReceiver):
 
 
 class TestLineReciever(unittest.TestCase):
-    S = 'TEST'
+    S = six.b('TEST')
 
     def setUp(self):
         self.proto = LineReceiverSubclass()
@@ -43,14 +47,14 @@ class TestLineReciever(unittest.TestCase):
 
     def test_excess_line_length(self):
         self.assertTrue(self.transport.connected)
-        self.proto.dataReceived('\x00' * (self.proto.MAX_LENGTH + 1))
+        self.proto.dataReceived(six.b('\x00') * (self.proto.MAX_LENGTH + 1))
         self.assertFalse(self.transport.connected)
 
     def test_excess_delimited_line(self):
         self.assertTrue(self.transport.connected)
         self.proto.dataReceived(self.S + self.proto.delimiter)
         self.assertEqual(self.proto._rcvd_line, self.S)
-        s = ('\x00' * (self.proto.MAX_LENGTH + 1)) + self.proto.delimiter
+        s = (six.b('\x00') * (self.proto.MAX_LENGTH + 1)) + self.proto.delimiter
         self.proto._rcvd_line = None
         self.proto.dataReceived(s)
         self.assertFalse(self.transport.connected)
@@ -81,3 +85,12 @@ class TestLineReciever(unittest.TestCase):
     def test_sendline(self):
         self.proto.sendLine(self.S)
         self.assertEqual(self.transport.value(), self.S + self.proto.delimiter)
+
+
+class TestBaseRedisProtocol(unittest.TestCase):
+    def setUp(self):
+        self._protocol = redis.BaseRedisProtocol()
+
+    def test_build_ping(self):
+        s = self._protocol._build_command("PING")
+        self.assertEqual(s, six.b('*1\r\n$4\r\nPING\r\n'))
