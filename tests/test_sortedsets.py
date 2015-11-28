@@ -337,7 +337,7 @@ class SortedSetsTests(unittest.TestCase):
         for x in range(begin, end):
             l.extend((x, self._to_words(x)))
         return self.db.zadd(key, *l).addCallback(
-            self._sorted_set_check, zip(l[1::2], l[::2]))
+            self._sorted_set_check, list(zip(l[1::2], l[::2])))
 
     @defer.inlineCallbacks
     def setUp(self):

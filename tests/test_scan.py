@@ -28,10 +28,10 @@ class TestScan(unittest.TestCase, RedisVersionCheckMixin):
     SKEY = ['_scan_test_set']
     SUFFIX = '12'
     PATTERN = '_scan_test_*' + SUFFIX
-    FILTERED_KEYS = [k for k in KEYS if k.endswith(SUFFIX)]
 
     @inlineCallbacks
     def setUp(self):
+        self.FILTERED_KEYS = [k for k in self.KEYS if k.endswith(self.SUFFIX)]
         self.db = yield Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
         self.redis_2_8_0 = yield self.checkVersion(2, 8, 0)
         yield self.db.delete(*self.KEYS)

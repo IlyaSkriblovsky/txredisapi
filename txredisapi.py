@@ -230,7 +230,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.errors = errors
 
         self.bulk_length = 0
-        self.bulk_buffer = []
+        self.bulk_buffer = bytearray()
 
         self.post_proc = []
         self.multi_bulk = MultiBulkStorage()
@@ -374,11 +374,11 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         else:
             rest = ""
 
-        self.bulk_buffer.append(data)
+        self.bulk_buffer.extend(data)
         if self.bulk_length == 0:
-            bulk_buffer = "".join(self.bulk_buffer)[:-2]
-            self.bulk_buffer = []
-            self.bulkDataReceived(bulk_buffer)
+            bulk_buffer = self.bulk_buffer[:-2]
+            self.bulk_buffer = bytearray()
+            self.bulkDataReceived(bytes(bulk_buffer))
             self.setLineMode(extra=rest)
 
     def bulkDataReceived(self, data):
@@ -395,7 +395,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.replyReceived(el)
 
     def tryConvertData(self, data):
-        if not isinstance(data, str):
+        if not isinstance(data, six.string_types):
             return data
         el = None
         if self.factory.convertNumbers:
@@ -412,6 +412,8 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                     el = data.decode(self.charset)
                 except UnicodeDecodeError:
                     pass
+                except AttributeError:
+                    el = data
         return el
 
     def handleMultiBulkElement(self, element):
