@@ -26,4 +26,13 @@ setuptools.setup(
     url="http://github.com/fiorix/txredisapi",
     license="http://www.apache.org/licenses/LICENSE-2.0",
     description="non-blocking redis client for python",
+    classifiers=[
+        'Development Status :: 5 - Production/Stable',
+        'Intended Audience :: Developers',
+        'Operating System :: OS Independent',
+        'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: Implementation :: PyPy',
+    ],
 )
