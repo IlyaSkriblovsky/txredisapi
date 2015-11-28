@@ -53,7 +53,7 @@ class TestLineReciever(unittest.TestCase):
     def test_excess_delimited_line(self):
         self.assertTrue(self.transport.connected)
         self.proto.dataReceived(self.S + self.proto.delimiter)
-        self.assertEqual(self.proto._rcvd_line, self.S)
+        self.assertEqual(self.proto._rcvd_line, self.S.decode())
         s = (six.b('\x00') * (self.proto.MAX_LENGTH + 1)) + self.proto.delimiter
         self.proto._rcvd_line = None
         self.proto.dataReceived(s)
@@ -66,7 +66,7 @@ class TestLineReciever(unittest.TestCase):
 
     def test_send_line(self):
         self.proto.dataReceived(self.S + self.proto.delimiter)
-        self.assertEqual(self.proto._rcvd_line, self.S)
+        self.assertEqual(self.proto._rcvd_line, self.S.decode())
 
     def test_raw_data(self):
         clock = task.Clock()
@@ -78,13 +78,14 @@ class TestLineReciever(unittest.TestCase):
         self.proto._rcvd_line = None
         self.proto.setLineMode(s)
         clock.advance(1)
-        self.assertEqual(self.proto._rcvd_line, self.S)
+        self.assertEqual(self.proto._rcvd_line, self.S.decode())
         self.proto.dataReceived(s)
-        self.assertEqual(self.proto._rcvd_line, self.S)
+        self.assertEqual(self.proto._rcvd_line, self.S.decode())
 
     def test_sendline(self):
         self.proto.sendLine(self.S)
-        self.assertEqual(self.transport.value(), self.S + self.proto.delimiter)
+        value = self.transport.value()
+        self.assertEqual(value, self.S + self.proto.delimiter)
 
 
 class TestBaseRedisProtocol(unittest.TestCase):

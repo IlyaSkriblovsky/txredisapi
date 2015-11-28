@@ -166,7 +166,10 @@ class LineReceiver(protocol.Protocol, basic._PauseableMixin):
                     exceeded = line + self.__buffer
                     self.__buffer = six.b('')
                     return self.lineLengthExceeded(exceeded)
-                why = self.lineReceived(line)
+                if hasattr(line, 'decode'):
+                    why = self.lineReceived(line.decode())
+                else:
+                    why = self.lineReceived(line)
                 if why or self.transport and self.transport.disconnecting:
                     return why
         else:
@@ -484,9 +487,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                         "Error encoding unicode value '%s': %s" %
                         (repr(s), e))
             elif isinstance(s, float):
-                cmd = format(s, "f")
+                cmd = format(s, "f").encode()
             else:
-                cmd = str(s).format()
+                cmd = str(s).format().encode()
             cmds.extend(cmd_template % (len(cmd), cmd))
             cmd_count += 1
 
