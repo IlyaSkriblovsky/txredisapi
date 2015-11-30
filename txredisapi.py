@@ -396,6 +396,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.replyReceived(el)
 
     def tryConvertData(self, data):
+        # The hiredis reader implicitly returns integers
+        if isinstance(data, six.integer_types):
+            return data
         el = None
         if self.factory.convertNumbers:
             if data:
@@ -1717,7 +1720,7 @@ class HiredisProtocol(BaseRedisProtocol):
             self._reader.feed(data)
         res = self._reader.gets()
         while res is not False:
-            if isinstance(res, basestring):
+            if isinstance(res, six.string_types):
                 res = self.tryConvertData(res)
             elif isinstance(res, list):
                 res = list(map(self.tryConvertData, res))
