@@ -4,6 +4,7 @@ services:
 
 python:
     - 2.7
+    - 3.5
 env:
     - TEST_HIREDIS=0
     - TEST_HIREDIS=1
@@ -11,7 +12,6 @@ notifications:
     irc:
         - "irc.freenode.org#cycloneweb"
 install:
-    - if [[ $TRAVIS_PYTHON_VERSION == '2.5' ]]; then pip install --use-mirrors twisted==11.0.0 'zope.interface<4.0'; fi
     - if [[ $TEST_HIREDIS == '1' ]]; then pip install hiredis; fi
     - pip install . --use-mirrors
 script: trial tests/
