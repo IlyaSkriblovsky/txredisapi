@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 from txredisapi import Connection
 
 from twisted.internet.defer import inlineCallbacks

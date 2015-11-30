@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import six
+
 import txredisapi as redis
 from twisted.internet import defer
 from twisted.trial import unittest
@@ -56,7 +58,7 @@ class TestNumberConversions(unittest.TestCase):
                     expected = format(k, "f")
                 else:
                     expected = str(k)
-                self.assertIsInstance(result, (str, unicode))
+                self.assertIsInstance(result, six.string_types)
                 self.assertEqual(result, expected)
 
     @defer.inlineCallbacks

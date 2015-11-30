@@ -29,8 +29,9 @@ class SortedSetsTests(unittest.TestCase):
     _KEYS = ['txredisapi:testssets1', 'txredisapi:testssets2',
              'txredisapi:testssets3', 'txredisapi:testssets4']
 
-    _NUMBERS = ["zero", "one", "two", "three", "four",
-                "five", "six", "seven", "eight", "nine"]
+    _NUMBERS = ["zero", "one", "two", "three",
+                "four", "five", "six", "seven",
+                "eight", "nine"]
 
     @defer.inlineCallbacks
     def test_zaddrem(self):
@@ -156,9 +157,9 @@ class SortedSetsTests(unittest.TestCase):
         agg_map = {
             'min': (('min', min), {
                     -1: [('three', -3)],
-                    0: [(u'three', 0)],
-                    1: [(u'three', 3)],
-                    2: [(u'three', 3)],
+                    0: [('three', 0)],
+                    1: [('three', 3)],
+                    2: [('three', 3)],
                     }),
             'max': (('max', max), {
                     -1: [('three', 3)],
@@ -178,8 +179,9 @@ class SortedSetsTests(unittest.TestCase):
     def test_zunionstore(self):
         agg_map = {
             'min': (('min', min), {
-                -1: [('five', -5), ('four', -4), ('three', -3),
-                    ('one', 1), ('two', 2)],
+                -1: [('five', -5), ('four', -4),
+                     ('three', -3), ('one', 1),
+                     ('two', 2)],
                 0: [('five', 0), ('four', 0), ('three', 0),
                     ('one', 1), ('two', 2)],
                 1: [('one', 1), ('two', 2), ('three', 3),
@@ -188,8 +190,9 @@ class SortedSetsTests(unittest.TestCase):
                     ('four', 8), ('five', 10)]
             }),
             'max': (('max', max), {
-                -1: [('five', -5), ('four', -4), ('one', 1),
-                     ('two', 2), ('three', 3)],
+                -1: [('five', -5), ('four', -4),
+                     ('one', 1), ('two', 2),
+                     ('three', 3)],
                 0: [('five', 0), ('four', 0), ('one', 1),
                     ('two', 2), ('three', 3)],
                 1: [('one', 1), ('two', 2), ('three', 3),
@@ -198,12 +201,12 @@ class SortedSetsTests(unittest.TestCase):
                     ('four', 8), ('five', 10)]
             }),
             'sum': (('sum', sum),  {
-                -1: [('five', -5), ('four', -4), ('three', 0),
-                     ('one', 1), ('two', 2)],
+                -1: [('five', -5), ('four', -4),
+                     ('three', 0), ('one', 1), ('two', 2)],
                 0: [('five', 0), ('four', 0), ('one', 1),
                     ('two', 2), ('three', 3)],
                 1: [('one', 1), ('two', 2), ('four', 4),
-                                ('five', 5), ('three', 6)],
+                    ('five', 5), ('three', 6)],
                 2: [('one', 1), ('two', 2), ('four', 8),
                     ('three', 9), ('five', 10)]
             })

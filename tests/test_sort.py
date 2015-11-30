@@ -24,7 +24,8 @@ class TestRedisSort(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
+        self.db = yield redis.Connection(REDIS_HOST, REDIS_PORT,
+                                         reconnect=False)
         yield self.db.delete('txredisapi:values')
         yield self.db.lpush('txredisapi:values', [5, 3, 19, 2, 4, 34, 12])
 

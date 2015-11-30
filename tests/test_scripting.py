@@ -16,6 +16,8 @@
 import sys
 import hashlib
 
+import six
+
 import txredisapi as redis
 
 from twisted.internet import defer
@@ -53,7 +55,7 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
         r = yield self.db.eval("return 10")
         self.assertEqual(r, 10)
         r = yield self.db.eval("return {1,2,3.3333,'foo',nil,'bar'}")
-        self.assertEqual(r, [1, 2, 3, "foo"])
+        self.assertEqual(r, [1, 2, 3, 'foo'])
         # Test the case where the hash is in script_hashes,
         # but redis doesn't have it
         h = self._hash_script(self._SCRIPT)
@@ -197,4 +199,4 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
         self.assertEqual(r, list(keys) + list(args))
 
     def _hash_script(self, script):
-        return hashlib.sha1(script).hexdigest()
+        return hashlib.sha1(script.encode()).hexdigest()

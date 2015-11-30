@@ -125,7 +125,8 @@ class TestRedisConnections(unittest.TestCase):
         yield t.hgetall(self._KEYS[0])
         (h2,) = yield t.commit()
 
-        self.assertEqual({"foo": "bar", "bar": "foo"}, h0)
+        self.assertEqual({"foo": "bar",
+                          "bar": "foo"}, h0)
         self.assertEqual(h0, h1)
         self.assertEqual(h0, h2)
 
@@ -142,6 +143,7 @@ class TestRedisConnections(unittest.TestCase):
         ], consumeErrors=True)
         yield t.unwatch()
 
-        self.assertEqual({"foo": "bar", "bar": "foo"}, h0)
+        self.assertEqual({"foo": "bar",
+                          "bar": "foo"}, h0)
         self.assertEqual(h0, h1)
         self.assertEqual(h0, h2)
