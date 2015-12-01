@@ -1720,7 +1720,8 @@ class HiredisProtocol(BaseRedisProtocol):
             self._reader.feed(data)
         res = self._reader.gets()
         while res is not False:
-            if isinstance(res, six.string_types):
+            if isinstance(res, six.string_types) or \
+                    isinstance(res, six.binary_type):
                 res = self.tryConvertData(res)
             elif isinstance(res, list):
                 res = list(map(self.tryConvertData, res))
@@ -1731,6 +1732,28 @@ class HiredisProtocol(BaseRedisProtocol):
 
             self.replyReceived(res)
             res = self._reader.gets()
+
+    def _convert_bin_values(self, result):
+        if isinstance(result, list):
+            return [self._convert_bin_values(x) for x in result]
+        elif isinstance(result, dict):
+            return {self._convert_bin_values(k): self._convert_bin_values(v)
+                    for k, v in six.iteritems(result)}
+        elif isinstance(result, six.binary_type):
+            return self.tryConvertData(result)
+        return result
+
+    def commit(self):
+        r = BaseRedisProtocol.commit(self)
+        return r.addCallback(self._convert_bin_values)
+
+    def scan(self, cursor=0, pattern=None, count=None):
+        r = BaseRedisProtocol.scan(self, cursor, pattern, count)
+        return r.addCallback(self._convert_bin_values)
+
+    def sscan(self, key, cursor=0, pattern=None, count=None):
+        r = BaseRedisProtocol.sscan(self, key, cursor, pattern, count)
+        return r.addCallback(self._convert_bin_values)
 
 if hiredis is not None:
     RedisProtocol = HiredisProtocol
