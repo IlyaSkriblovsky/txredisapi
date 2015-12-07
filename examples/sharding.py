@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+from __future__ import print_function
+
 import txredisapi as redis
 
 from twisted.internet import defer
@@ -11,17 +13,17 @@ from twisted.internet import reactor
 def main():
     # run two redis servers, one at port 6379 and another in 6380
     conn = yield redis.ShardedConnection(["localhost:6379", "localhost:6380"])
-    print repr(conn)
+    print(repr(conn))
 
     keys = ["test:%d" % x for x in xrange(100)]
     for k in keys:
         try:
             yield conn.set(k, "foobar")
         except:
-            print 'ops'
+            print('ops')
 
     result = yield conn.mget(keys)
-    print result
+    print(result)
 
     # testing tags
     keys = ["test{lero}:%d" % x for x in xrange(100)]
@@ -29,7 +31,7 @@ def main():
         yield conn.set(k, "foobar")
 
     result = yield conn.mget(keys)
-    print result
+    print(result)
 
     yield conn.disconnect()
 

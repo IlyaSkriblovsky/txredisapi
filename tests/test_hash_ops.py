@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import six
+
 from twisted.internet import defer
 from twisted.trial import unittest
 
@@ -39,9 +41,9 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict['key1'] = 'uno'
         t_dict['key2'] = 'dos'
         yield db.hmset("txredisapi:HMSetHMGet", t_dict)
-        ks = t_dict.keys()
+        ks = list(t_dict.keys())
         ks.reverse()
-        vs = t_dict.values()
+        vs = list(t_dict.values())
         vs.reverse()
         res = yield db.hmget("txredisapi:HMSetHMGet", ks)
         self.assertEqual(vs, res)
@@ -56,12 +58,12 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict['key2'] = 'dos'
         yield db.hmset("txredisapi:HKeysHVals", t_dict)
 
-        vs_u = [unicode(v) for v in t_dict.values()]
-        ks_u = [unicode(k) for k in t_dict.keys()]
+        vs_u = [six.text_type(v) for v in t_dict.values()]
+        ks_u = [six.text_type(k) for k in t_dict.keys()]
         k_res = yield db.hkeys("txredisapi:HKeysHVals")
         v_res = yield db.hvals("txredisapi:HKeysHVals")
-        self.assertEqual(ks_u, k_res)
-        self.assertEqual(vs_u, v_res)
+        self.assertEqual(sorted(ks_u), sorted(k_res))
+        self.assertEqual(sorted(vs_u), sorted(v_res))
 
         yield db.disconnect()
 

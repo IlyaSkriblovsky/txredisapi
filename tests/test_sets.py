@@ -43,7 +43,7 @@ class SetsTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_saddrem(self):
-        s = set(xrange(self.N))
+        s = set(range(self.N))
         r = yield self.db.sadd(self._KEYS[0], s)
         self.assertEqual(r, len(s))
         a = s.pop()
@@ -70,10 +70,10 @@ class SetsTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_sunion(self):
-        s = set(xrange(self.N))
+        s = set(range(self.N))
         s1 = set()
         for x in range(4):
-            ss = set(s.pop() for x in xrange(self.N >> 2))
+            ss = set(s.pop() for x in range(self.N >> 2))
             s1.update(ss)
             r = yield self.db.sadd(self._KEYS[x], ss)
             self.assertEqual(r, len(ss))
@@ -87,7 +87,7 @@ class SetsTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_sdiff(self):
-        l = range(self.N)
+        l = list(range(self.N))
         random.shuffle(l)
         p1 = set(l[:self.N >> 1])
         random.shuffle(l)
@@ -107,7 +107,7 @@ class SetsTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_sinter(self):
-        l = range(self.N)
+        l = list(range(self.N))
         random.shuffle(l)
         p1 = set(l[:self.N >> 1])
         random.shuffle(l)
@@ -127,7 +127,7 @@ class SetsTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_smembers(self):
-        s = set(xrange(self.N))
+        s = set(range(self.N))
         r = yield self.db.sadd(self._KEYS[0], s)
         self.assertEqual(r, len(s))
         r = yield self.db.smembers(self._KEYS[0])

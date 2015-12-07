@@ -21,6 +21,8 @@
 # You may not use regular commands (like get, set, etc...) on the
 # subscriber connection.
 
+from __future__ import print_function
+
 import txredisapi as redis
 
 from twisted.application import internet
@@ -29,10 +31,10 @@ from twisted.application import service
 
 class myProtocol(redis.SubscriberProtocol):
     def connectionMade(self):
-        print "waiting for messages..."
-        print "use the redis client to send messages:"
-        print "$ redis-cli publish zz test"
-        print "$ redis-cli publish foo.bar hello world"
+        print("waiting for messages...")
+        print("use the redis client to send messages:")
+        print("$ redis-cli publish zz test")
+        print("$ redis-cli publish foo.bar hello world")
 
         #self.auth("foobared")
 
@@ -45,10 +47,10 @@ class myProtocol(redis.SubscriberProtocol):
         # self.transport.loseConnection()
 
     def messageReceived(self, pattern, channel, message):
-        print "pattern=%s, channel=%s message=%s" % (pattern, channel, message)
+        print("pattern=%s, channel=%s message=%s" % (pattern, channel, message))
 
     def connectionLost(self, reason):
-        print "lost connection:", reason
+        print("lost connection:", reason)
 
 
 class myFactory(redis.SubscriberFactory):

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import six
 
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
@@ -72,10 +73,11 @@ class TestSubscriberProtocol(unittest.TestCase):
     @defer.inlineCallbacks
     def testSubscribe(self):
         reply = yield self.db.subscribe("test_subscribe1")
-        self.assertEqual(reply, [u"subscribe", u"test_subscribe1", 1])
+        self.assertEqual(reply, ["subscribe", "test_subscribe1", 1])
 
         reply = yield self.db.subscribe("test_subscribe2")
-        self.assertEqual(reply, [u"subscribe", u"test_subscribe2", 2])
+        self.assertEqual(reply, ["subscribe",
+                                 "test_subscribe2", 2])
 
     @defer.inlineCallbacks
     def testUnsubscribe(self):
@@ -83,17 +85,21 @@ class TestSubscriberProtocol(unittest.TestCase):
         yield self.db.subscribe("test_unsubscribe2")
 
         reply = yield self.db.unsubscribe("test_unsubscribe1")
-        self.assertEqual(reply, [u"unsubscribe", u"test_unsubscribe1", 1])
+        self.assertEqual(reply, ["unsubscribe",
+                                 "test_unsubscribe1", 1])
         reply = yield self.db.unsubscribe("test_unsubscribe2")
-        self.assertEqual(reply, [u"unsubscribe", u"test_unsubscribe2", 0])
+        self.assertEqual(reply, ["unsubscribe",
+                                 "test_unsubscribe2", 0])
 
     @defer.inlineCallbacks
     def testPSubscribe(self):
         reply = yield self.db.psubscribe("test_psubscribe1.*")
-        self.assertEqual(reply, [u"psubscribe", u"test_psubscribe1.*", 1])
+        self.assertEqual(reply, ["psubscribe",
+                                 "test_psubscribe1.*", 1])
 
         reply = yield self.db.psubscribe("test_psubscribe2.*")
-        self.assertEqual(reply, [u"psubscribe", u"test_psubscribe2.*", 2])
+        self.assertEqual(reply, ["psubscribe",
+                                 "test_psubscribe2.*", 2])
 
     @defer.inlineCallbacks
     def testPUnsubscribe(self):
@@ -101,9 +107,11 @@ class TestSubscriberProtocol(unittest.TestCase):
         yield self.db.psubscribe("test_punsubscribe2.*")
 
         reply = yield self.db.punsubscribe("test_punsubscribe1.*")
-        self.assertEqual(reply, [u"punsubscribe", u"test_punsubscribe1.*", 1])
+        self.assertEqual(reply, ["punsubscribe",
+                                 "test_punsubscribe1.*", 1])
         reply = yield self.db.punsubscribe("test_punsubscribe2.*")
-        self.assertEqual(reply, [u"punsubscribe", u"test_punsubscribe2.*", 0])
+        self.assertEqual(reply, ["punsubscribe",
+                                 "test_punsubscribe2.*", 0])
 
 
 class TestAuthenticatedSubscriberProtocol(unittest.TestCase):
@@ -116,7 +124,8 @@ class TestAuthenticatedSubscriberProtocol(unittest.TestCase):
         yield meta.disconnect()
         self.addCleanup(self.removePassword)
 
-        factory = redis.RedisFactory(None, dbid=0, poolsize=1, password="password")
+        factory = redis.RedisFactory(None, dbid=0, poolsize=1,
+                                     password="password")
         factory.protocol = redis.SubscriberProtocol
         factory.continueTrying = False
         reactor.connectTCP(REDIS_HOST, REDIS_PORT, factory)
@@ -124,7 +133,8 @@ class TestAuthenticatedSubscriberProtocol(unittest.TestCase):
 
     @defer.inlineCallbacks
     def removePassword(self):
-        meta = yield redis.Connection(REDIS_HOST, REDIS_PORT, password="password")
+        meta = yield redis.Connection(REDIS_HOST, REDIS_PORT,
+                                      password="password")
         yield meta.execute_command("config", "set", "requirepass", "")
         yield meta.disconnect()
 

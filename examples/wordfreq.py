@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+from __future__ import print_function
+
 import sys
 import txredisapi as redis
 
@@ -13,8 +15,8 @@ def wordfreq(file):
         f = open(file, 'r')
         words = f.read()
         f.close()
-    except Exception, e:
-        print "Exception: %s" % e
+    except Exception as e:
+        print("Exception: %s" % e)
         return None
 
     wf = {}
@@ -39,9 +41,9 @@ def main(wordlist):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print "Usage: wordfreq.py <file_to_count.txt>"
+        print("Usage: wordfreq.py <file_to_count.txt>")
         sys.exit(-1)
     l, wfl = wordfreq(sys.argv[1])
-    print "count: %d" % l
+    print("count: %d" % l)
     main(wfl.keys())
     reactor.run()

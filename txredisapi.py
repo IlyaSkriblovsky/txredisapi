@@ -22,12 +22,13 @@
 #   Sharding and Consistent Hashing implementation by Gleicon Moraes.
 #
 
+import six
+
 import bisect
 import collections
 import functools
 import operator
 import re
-import types
 import warnings
 import zlib
 import string
@@ -83,7 +84,8 @@ def list_or_args(command, keys, args):
     oldapi = bool(args)
     try:
         iter(keys)
-        if isinstance(keys, (str, unicode)):
+        if isinstance(keys, six.string_types) or \
+                isinstance(keys, six.binary_type):
             keys = [keys]
             if not oldapi:
                 return keys
@@ -131,13 +133,13 @@ class MultiBulkStorage(object):
 class LineReceiver(protocol.Protocol, basic._PauseableMixin):
     callLater = reactor.callLater
     line_mode = 1
-    __buffer = ''
-    delimiter = '\r\n'
+    __buffer = six.b('')
+    delimiter = six.b('\r\n')
     MAX_LENGTH = 16384
 
     def clearLineBuffer(self):
         b = self.__buffer
-        self.__buffer = ""
+        self.__buffer = six.b('')
         return b
 
     def dataReceived(self, data, unpause=False):
@@ -156,26 +158,29 @@ class LineReceiver(protocol.Protocol, basic._PauseableMixin):
                 line, self.__buffer = self.__buffer.split(self.delimiter, 1)
             except ValueError:
                 if len(self.__buffer) > self.MAX_LENGTH:
-                    line, self.__buffer = self.__buffer, ''
+                    line, self.__buffer = self.__buffer, six.b('')
                     return self.lineLengthExceeded(line)
                 break
             else:
                 linelength = len(line)
                 if linelength > self.MAX_LENGTH:
                     exceeded = line + self.__buffer
-                    self.__buffer = ''
+                    self.__buffer = six.b('')
                     return self.lineLengthExceeded(exceeded)
-                why = self.lineReceived(line)
+                if hasattr(line, 'decode'):
+                    why = self.lineReceived(line.decode())
+                else:
+                    why = self.lineReceived(line)
                 if why or self.transport and self.transport.disconnecting:
                     return why
         else:
             if not self.paused:
                 data = self.__buffer
-                self.__buffer = ''
+                self.__buffer = six.b('')
                 if data:
                     return self.rawDataReceived(data)
 
-    def setLineMode(self, extra=''):
+    def setLineMode(self, extra=six.b('')):
         self.line_mode = 1
         if extra:
             self.pauseProducing()
@@ -191,6 +196,8 @@ class LineReceiver(protocol.Protocol, basic._PauseableMixin):
         raise NotImplementedError
 
     def sendLine(self, line):
+        if isinstance(line, six.text_type):
+            line = line.encode()
         return self.transport.write(line + self.delimiter)
 
     def lineLengthExceeded(self, line):
@@ -224,7 +231,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.errors = errors
 
         self.bulk_length = 0
-        self.bulk_buffer = []
+        self.bulk_buffer = bytearray()
 
         self.post_proc = []
         self.multi_bulk = MultiBulkStorage()
@@ -250,7 +257,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 response = yield self.auth(self.factory.password)
                 if isinstance(response, ResponseError):
                     raise response
-            except Exception, e:
+            except Exception as e:
                 self.factory.continueTrying = False
                 self.transport.loseConnection()
 
@@ -265,7 +272,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 response = yield self.select(self.factory.dbid)
                 if isinstance(response, ResponseError):
                     raise response
-            except Exception, e:
+            except Exception as e:
                 self.factory.continueTrying = False
                 self.transport.loseConnection()
 
@@ -304,7 +311,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         if token == "$":  # bulk data
             try:
-                self.bulk_length = long(data)
+                self.bulk_length = int(data)
             except ValueError:
                 self.replyReceived(InvalidResponse("Cannot convert data "
                                                    "'%s' to integer" % data))
@@ -318,7 +325,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         elif token == "*":  # multi-bulk data
             try:
-                n = long(data)
+                n = int(data)
             except (TypeError, ValueError):
                 self.multi_bulk = MultiBulkStorage()
                 self.replyReceived(InvalidResponse("Cannot convert "
@@ -368,11 +375,11 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         else:
             rest = ""
 
-        self.bulk_buffer.append(data)
+        self.bulk_buffer.extend(data)
         if self.bulk_length == 0:
-            bulk_buffer = "".join(self.bulk_buffer)[:-2]
-            self.bulk_buffer = []
-            self.bulkDataReceived(bulk_buffer)
+            bulk_buffer = self.bulk_buffer[:-2]
+            self.bulk_buffer = bytearray()
+            self.bulkDataReceived(bytes(bulk_buffer))
             self.setLineMode(extra=rest)
 
     def bulkDataReceived(self, data):
@@ -389,15 +396,25 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.replyReceived(el)
 
     def tryConvertData(self, data):
-        if not isinstance(data, str):
+        # The hiredis reader implicitly returns integers
+        if isinstance(data, six.integer_types):
             return data
         el = None
         if self.factory.convertNumbers:
-            if data and data[0] in _NUM_FIRST_CHARS:  # Most likely a number
+            if data:
+                num_data = data
                 try:
-                    el = int(data) if data.find('.') == -1 else float(data)
-                except ValueError:
+                    if isinstance(data, six.binary_type):
+                        num_data = data.decode()
+                except UnicodeError:
                     pass
+                else:
+                    if num_data[0] in _NUM_FIRST_CHARS:  # Most likely a number
+                        try:
+                            el = int(num_data) if num_data.find('.') == -1 \
+                                else float(num_data)
+                        except ValueError:
+                            pass
 
         if el is None:
             el = data
@@ -406,6 +423,8 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                     el = data.decode(self.charset)
                 except UnicodeDecodeError:
                     pass
+                except AttributeError:
+                    el = data
         return el
 
     def handleMultiBulkElement(self, element):
@@ -463,33 +482,49 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             raise r
         return r
 
+    def _encode_value(self, arg):
+        if isinstance(arg, six.binary_type):
+            return arg
+        elif isinstance(arg, six.text_type):
+            if self.charset is None:
+                try:
+                    return arg.encode()
+                except UnicodeError:
+                    pass
+                raise InvalidData("Encoding charset was not specified")
+            try:
+                return arg.encode(self.charset, self.errors)
+            except UnicodeEncodeError as e:
+                raise InvalidData(
+                    "Error encoding unicode value '%s': %s" %
+                    (repr(arg), e))
+        elif isinstance(arg, float):
+            return format(arg, "f").encode()
+        elif isinstance(arg, bytearray):
+            return bytes(arg)
+        else:
+            return str(arg).format().encode()
+
+    def _build_command(self, *args, **kwargs):
+        # Build the redis command.
+        cmds = bytearray()
+        cmd_count = 0
+        cmd_template = six.b("$%d\r\n%s\r\n")
+        for s in args:
+            cmd = self._encode_value(s)
+            cmds.extend(cmd_template % (len(cmd), cmd))
+            cmd_count += 1
+
+        command = bytes(six.b("*%d\r\n") % (cmd_count,) + cmds)
+        if not isinstance(command, six.binary_type):
+            command = command.encode()
+        return command
+
     def execute_command(self, *args, **kwargs):
         if self.connected == 0:
             raise ConnectionError("Not connected")
         else:
-
-            # Build the redis command.
-            cmds = []
-            cmd_template = "$%s\r\n%s\r\n"
-            for s in args:
-                if isinstance(s, str):
-                    cmd = s
-                elif isinstance(s, unicode):
-                    if self.charset is None:
-                        raise InvalidData("Encoding charset was not specified")
-                    try:
-                        cmd = s.encode(self.charset, self.errors)
-                    except UnicodeEncodeError, e:
-                        raise InvalidData(
-                            "Error encoding unicode value '%s': %s" %
-                            (repr(s), e))
-                elif isinstance(s, float):
-                    cmd = format(s, "f")
-                else:
-                    cmd = str(s)
-                cmds.append(cmd_template % (len(cmd), cmd))
-            command = "*%s\r\n%s" % (len(cmds), "".join(cmds))
-
+            command = self._build_command(*args, **kwargs)
             # When pipelining, buffer this command into our list of
             # pipelined commands. Otherwise, write the command immediately.
             if self.pipelining:
@@ -515,7 +550,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                     f = kwargs["post_proc"]
                     if callable(f):
                         r.addCallback(f)
-
             return r
 
     ##
@@ -740,7 +774,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         HMSET replaces old values with new values.
         """
         items = []
-        for pair in mapping.iteritems():
+        for pair in six.iteritems(mapping):
             items.extend(pair)
         return self.execute_command("MSET", *items)
 
@@ -750,7 +784,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         operation if none of the keys already exist
         """
         items = []
-        for pair in mapping.iteritems():
+        for pair in six.iteritems(mapping):
             items.extend(pair)
         return self.execute_command("MSETNX", *items)
 
@@ -762,7 +796,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         srclen = len(srckeys)
         if srclen == 0:
             return defer.fail(RedisError("no ``srckeys`` specified"))
-        if isinstance(operation, (str, unicode)):
+        if isinstance(operation, six.string_types):
             operation = operation.upper()
         elif operation is operator.and_ or operation is operator.__and__:
             operation = 'AND'
@@ -912,7 +946,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         Blocking LPOP
         """
-        if isinstance(keys, (str, unicode)):
+        if isinstance(keys, six.string_types):
             keys = [keys]
         else:
             keys = list(keys)
@@ -924,7 +958,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         Blocking RPOP
         """
-        if isinstance(keys, (str, unicode)):
+        if isinstance(keys, six.string_types):
             keys = [keys]
         else:
             keys = list(keys)
@@ -1089,12 +1123,20 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     def zdecr(self, key, member):
         return self.zincrby(key, -1, member)
 
+    @staticmethod
+    def _handle_zincrby(data):
+        if isinstance(data, (six.binary_type, six.text_type)):
+            return float(data)
+        return data
+
     def zincrby(self, key, increment, member):
         """
         If the member already exists increment its score by increment,
         otherwise add the member setting increment as score
         """
-        return self.execute_command("ZINCRBY", key, increment, member)
+        return self.execute_command("ZINCRBY",
+                                    key, increment,
+                                    member).addCallback(self._handle_zincrby)
 
     def zrank(self, key, member):
         """
@@ -1113,7 +1155,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     def _handle_withscores(self, r):
         if isinstance(r, list):
             # Return a list tuples of form (value, score)
-            return zip(r[::2], r[1::2])
+            return list((x[0], float(x[1])) for x in zip(r[::2], r[1::2]))
         return r
 
     def _zrange(self, key, start, end, withscores, reverse):
@@ -1196,12 +1238,19 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("ZCARD", key)
 
+    @staticmethod
+    def _handle_zscore(data):
+        if isinstance(data, (six.binary_type, six.text_type)):
+            return int(data)
+        return data
+
     def zscore(self, key, element):
         """
         Return the score associated with the specified element of the sorted
         set at key
         """
-        return self.execute_command("ZSCORE", key, element)
+        return self.execute_command("ZSCORE", key,
+                                    element).addCallback(self._handle_zscore)
 
     def zremrangebyrank(self, key, min=0, max=-1):
         """
@@ -1234,7 +1283,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     def _zaggregate(self, command, dstkey, keys, aggregate):
         pieces = [command, dstkey, len(keys)]
         if isinstance(keys, dict):
-            keys, weights = zip(*keys.items())
+            keys, weights = list(zip(*keys.items()))
         else:
             weights = None
 
@@ -1252,7 +1301,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 aggregate = 'SUM'
             else:
                 err_flag = True
-                if isinstance(aggregate, (str, unicode)):
+                if isinstance(aggregate, six.string_types):
                     aggregate_u = aggregate.upper()
                     if aggregate_u in ('MIN', 'MAX', 'SUM'):
                         aggregate = aggregate_u
@@ -1298,7 +1347,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         Set the hash fields to their respective values.
         """
         items = []
-        for pair in mapping.iteritems():
+        for pair in six.iteritems(mapping):
             items.extend(pair)
         return self.execute_command("HMSET", key, *items)
 
@@ -1324,7 +1373,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         Remove the specified field or fields from a hash
         """
-        if isinstance(fields, (str, unicode)):
+        if isinstance(fields, six.string_types):
             fields = [fields]
         else:
             fields = list(fields)
@@ -1352,7 +1401,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         Return all the fields and associated values in a hash.
         """
-        f = lambda d: dict(zip(d[::2], d[1::2]))
+        f = lambda d: dict(list(zip(d[::2], d[1::2])))
         return self.execute_command("HGETALL", key, post_proc=f)
 
     def hscan(self, key, cursor=0, pattern=None, count=None):
@@ -1399,7 +1448,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.inMulti = False
             self.unwatch_cc = self._clear_txstate
             self.commit_cc = lambda: ()
-        if isinstance(keys, (str, unicode)):
+        if isinstance(keys, six.string_types):
             keys = [keys]
         d = self.execute_command("WATCH", *keys).addCallback(self._tx_started)
         return d
@@ -1476,7 +1525,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         # Flush all the commands at once to redis. Wait for all replies
         # to come back using a deferred list.
-        self.transport.write("".join(self.pipelined_commands))
+        self.transport.write(six.b("").join(self.pipelined_commands))
 
         d = defer.DeferredList(
             deferredList=self.pipelined_replies,
@@ -1541,11 +1590,13 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         return self.execute_command("BGREWRITEAOF")
 
     def _process_info(self, r):
+        if isinstance(r, six.binary_type):
+            r = r.decode()
         keypairs = [x for x in r.split('\r\n') if
-                    u':' in x and not x.startswith(u'#')]
+                    ':' in x and not x.startswith('#')]
         d = {}
         for kv in keypairs:
-            k, v = kv.split(u':')
+            k, v = kv.split(':')
             d[k] = v
         return d
 
@@ -1581,6 +1632,8 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         return err
 
     def eval(self, script, keys=[], args=[]):
+        if isinstance(script, six.text_type):
+            script = script.encode()
         h = hashlib.sha1(script).hexdigest()
         if h in self.script_hashes:
             return self.evalsha(h, keys, args).addErrback(
@@ -1632,8 +1685,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             if r.check(ResponseError):
                 if r.value.args[0].startswith(u'NOTBUSY'):
                     raise NoScriptRunning("No script running")
-        else:
-            pass
         return r
 
     def script_kill(self):
@@ -1669,10 +1720,11 @@ class HiredisProtocol(BaseRedisProtocol):
             self._reader.feed(data)
         res = self._reader.gets()
         while res is not False:
-            if isinstance(res, basestring):
+            if isinstance(res, six.string_types) or \
+                    isinstance(res, six.binary_type):
                 res = self.tryConvertData(res)
             elif isinstance(res, list):
-                res = map(self.tryConvertData, res)
+                res = list(map(self.tryConvertData, res))
             if res == "QUEUED":
                 self.transactions += 1
             else:
@@ -1680,6 +1732,28 @@ class HiredisProtocol(BaseRedisProtocol):
 
             self.replyReceived(res)
             res = self._reader.gets()
+
+    def _convert_bin_values(self, result):
+        if isinstance(result, list):
+            return [self._convert_bin_values(x) for x in result]
+        elif isinstance(result, dict):
+            return {self._convert_bin_values(k): self._convert_bin_values(v)
+                    for k, v in six.iteritems(result)}
+        elif isinstance(result, six.binary_type):
+            return self.tryConvertData(result)
+        return result
+
+    def commit(self):
+        r = BaseRedisProtocol.commit(self)
+        return r.addCallback(self._convert_bin_values)
+
+    def scan(self, cursor=0, pattern=None, count=None):
+        r = BaseRedisProtocol.scan(self, cursor, pattern, count)
+        return r.addCallback(self._convert_bin_values)
+
+    def sscan(self, key, cursor=0, pattern=None, count=None):
+        r = BaseRedisProtocol.sscan(self, key, cursor, pattern, count)
+        return r.addCallback(self._convert_bin_values)
 
 if hiredis is not None:
     RedisProtocol = HiredisProtocol
@@ -1724,22 +1798,22 @@ class SubscriberProtocol(RedisProtocol):
             self.replyQueue.put(reply)
 
     def subscribe(self, channels):
-        if isinstance(channels, (str, unicode)):
+        if isinstance(channels, six.string_types):
             channels = [channels]
         return self.execute_command("SUBSCRIBE", *channels)
 
     def unsubscribe(self, channels):
-        if isinstance(channels, (str, unicode)):
+        if isinstance(channels, six.string_types):
             channels = [channels]
         return self.execute_command("UNSUBSCRIBE", *channels)
 
     def psubscribe(self, patterns):
-        if isinstance(patterns, (str, unicode)):
+        if isinstance(patterns, six.string_types):
             patterns = [patterns]
         return self.execute_command("PSUBSCRIBE", *patterns)
 
     def punsubscribe(self, patterns):
-        if isinstance(patterns, (str, unicode)):
+        if isinstance(patterns, six.string_types):
             patterns = [patterns]
         return self.execute_command("PUNSUBSCRIBE", *patterns)
 
@@ -1772,7 +1846,8 @@ class ConnectionHandler(object):
                     raise
 
                 def put_back(reply):
-                    if not connection.inTransaction and not connection.pipelining:
+                    if not connection.inTransaction and \
+                       not connection.pipelining:
                         self._factory.connectionQueue.put(connection)
                     return reply
 
@@ -1862,7 +1937,7 @@ ShardedMethods = frozenset([
     "zremrangebyscore",
     "zremrangebyrank",
     "zrevrange",
-    "zscore",
+    "zscore"
 ])
 
 _findhash = re.compile(r'.+\{(.*)\}.*')
@@ -1881,8 +1956,11 @@ class HashRing(object):
 
     def add_node(self, node):
         self.nodes.append(node)
-        for x in xrange(self.replicas):
-            crckey = zlib.crc32("%s:%d" % (node._factory.uuid, x))
+        for x in range(self.replicas):
+            uuid = node._factory.uuid
+            if isinstance(uuid, six.text_type):
+                uuid = uuid.encode()
+            crckey = zlib.crc32(six.b("%s:%d") % (uuid, x))
             self.ring[crckey] = node
             self.sorted_keys.append(crckey)
 
@@ -1890,8 +1968,8 @@ class HashRing(object):
 
     def remove_node(self, node):
         self.nodes.remove(node)
-        for x in xrange(self.replicas):
-            crckey = zlib.crc32("%s:%d" % (node, x))
+        for x in range(self.replicas):
+            crckey = zlib.crc32(six.b("%s:%d") % (node, x))
             self.ring.remove(crckey)
             self.sorted_keys.remove(crckey)
 
@@ -1929,7 +2007,7 @@ class ShardedConnectionHandler(object):
             self._ring = HashRing(connections)
 
     def _makeRing(self, connections):
-        connections = map(operator.itemgetter(1), connections)
+        connections = list(map(operator.itemgetter(1), connections))
         self._ring = HashRing(connections)
         return self
 
@@ -1945,7 +2023,7 @@ class ShardedConnectionHandler(object):
     def _wrap(self, method, *args, **kwargs):
         try:
             key = args[0]
-            assert isinstance(key, (str, unicode))
+            assert isinstance(key, six.string_types)
         except:
             raise ValueError(
                 "Method '%s' requires a key as the first argument" % method)
@@ -1980,7 +2058,7 @@ class ShardedConnectionHandler(object):
             group[node].append(k)
 
         deferreds = []
-        for node, keys in group.items():
+        for node, keys in six.iteritems(group.items):
             nd = node.mget(keys)
             deferreds.append(nd)
 
@@ -2000,7 +2078,7 @@ class ShardedConnectionHandler(object):
             except:
                 pass
             else:
-                nodes.append("%s:%s/%d" %
+                nodes.append(six.b("%s:%s/%d") %
                              (cli.host, cli.port, conn._factory.size))
         return "<Redis Sharded Connection: %s>" % ", ".join(nodes)
 
@@ -2014,7 +2092,7 @@ class ShardedUnixConnectionHandler(ShardedConnectionHandler):
             except:
                 pass
             else:
-                nodes.append("%s/%d" %
+                nodes.append(six.b("%s/%d") %
                              (cli.name, conn._factory.size))
         return "<Redis Sharded Connection: %s>" % ", ".join(nodes)
 
@@ -2030,7 +2108,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             raise ValueError("Redis poolsize must be an integer, not %s" %
                              repr(poolsize))
 
-        if not isinstance(dbid, (int, types.NoneType)):
+        if not isinstance(dbid, (int, type(None))):
             raise ValueError("Redis dbid must be an integer, not %s" %
                              repr(dbid))
 
@@ -2072,7 +2150,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     def delConnection(self, conn):
         try:
             self.pool.remove(conn)
-        except Exception, e:
+        except Exception as e:
             log.msg("Could not remove connection from pool: %s" % str(e))
 
         self.size = len(self.pool)
@@ -2135,11 +2213,11 @@ class MonitorFactory(RedisFactory):
 def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
                    charset, password, connectTimeout, replyTimeout,
                    convertNumbers):
-    uuid = "%s:%s" % (host, port)
+    uuid = "%s:%d" % (host, port)
     factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler,
                            charset, password, replyTimeout, convertNumbers)
     factory.continueTrying = reconnect
-    for x in xrange(poolsize):
+    for x in range(poolsize):
         reactor.connectTCP(host, port, factory, connectTimeout)
 
     if isLazy:
@@ -2251,7 +2329,7 @@ def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy,
     factory = RedisFactory(path, dbid, poolsize, isLazy, UnixConnectionHandler,
                            charset, password, replyTimeout, convertNumbers)
     factory.continueTrying = reconnect
-    for x in xrange(poolsize):
+    for x in range(poolsize):
         reactor.connectUNIX(path, factory, connectTimeout)
 
     if isLazy:

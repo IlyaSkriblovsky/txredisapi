@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import six
+
 import os
+import base64
 
 from twisted.internet import defer
 from twisted.trial import unittest
@@ -29,12 +32,17 @@ class LargeMultiBulk(unittest.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         self.db = yield redis.Connection(
-            REDIS_HOST, REDIS_PORT, reconnect=False)
+            REDIS_HOST, REDIS_PORT, reconnect=False,
+            charset=None)
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.db.delete(self._KEY)
         yield self.db.disconnect()
+
+    @staticmethod
+    def random_data(length):
+        return base64.b64encode(os.urandom(10))
 
     @defer.inlineCallbacks
     def _test_multibulk(self, data):
@@ -47,13 +55,13 @@ class LargeMultiBulk(unittest.TestCase):
         return self._test_multibulk(data)
 
     def test_large_multibulk_str(self):
-        data = set([os.urandom(10).encode('base64') for x in range(100)])
+        data = set([self.random_data(10) for x in range(100)])
         return self._test_multibulk(data)
 
     @defer.inlineCallbacks
     def test_bulk_numeric(self):
         test_values = [
-            '', '.hello', '+world', '123test',
+            six.b(''), six.b('.hello'), six.b('+world'), six.b('123test'),
             +1, 0.1, 0.01, -0.1, 0, -10]
         for v in test_values:
             yield self.db.set(self._KEY, v)
@@ -68,7 +76,7 @@ class LargeMultiBulk(unittest.TestCase):
         if there's a '.' in the string.
         This test is to ensure this behavior isn't broken in the future.
         '''
-        values = ['+inf', '-inf', 'NaN']
+        values = [six.b('+inf'), six.b('-inf'), six.b('NaN')]
         for x in values:
             yield self.db.set(self._KEY, x)
             r = yield self.db.get(self._KEY)
