@@ -509,13 +509,16 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         # Build the redis command.
         cmds = bytearray()
         cmd_count = 0
-        cmd_template = six.b("$%d\r\n%s\r\n")
         for s in args:
             cmd = self._encode_value(s)
-            cmds.extend(cmd_template % (len(cmd), cmd))
+            cmds.extend(six.b("$"))
+            for token in self._encode_value(len(cmd)), cmd:
+                cmds.extend(token)
+                cmds.extend(six.b("\r\n"))
             cmd_count += 1
 
-        command = bytes(six.b("*%d\r\n") % (cmd_count,) + cmds)
+        command = bytes(six.b("").join(
+            [six.b("*"), self._encode_value(cmd_count), six.b("\r\n")]) + cmds)
         if not isinstance(command, six.binary_type):
             command = command.encode()
         return command
@@ -1960,7 +1963,8 @@ class HashRing(object):
             uuid = node._factory.uuid
             if isinstance(uuid, six.text_type):
                 uuid = uuid.encode()
-            crckey = zlib.crc32(six.b("%s:%d") % (uuid, x))
+            crckey = zlib.crc32(six.b(":").join(
+                [uuid, str(x).format().encode()]))
             self.ring[crckey] = node
             self.sorted_keys.append(crckey)
 
@@ -1969,7 +1973,8 @@ class HashRing(object):
     def remove_node(self, node):
         self.nodes.remove(node)
         for x in range(self.replicas):
-            crckey = zlib.crc32(six.b("%s:%d") % (node, x))
+            crckey = zlib.crc32(six.b(":").join(
+                [node, str(x).format().encode()]))
             self.ring.remove(crckey)
             self.sorted_keys.remove(crckey)
 
