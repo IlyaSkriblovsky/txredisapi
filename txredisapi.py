@@ -1828,6 +1828,7 @@ class ConnectionHandler(object):
 
     def disconnect(self):
         self._factory.continueTrying = 0
+        self._factory.disconnectCalled = True
         for conn in self._factory.pool:
             try:
                 conn.transport.loseConnection()
@@ -2133,6 +2134,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.handler = handler(self)
         self.connectionQueue = defer.DeferredQueue()
         self._waitingForEmptyPool = set()
+        self.disconnectCalled = False
 
     def buildProtocol(self, addr):
         if hasattr(self, 'charset'):
@@ -2144,7 +2146,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         return p
 
     def addConnection(self, conn):
-        if not self.continueTrying:
+        if self.disconnectCalled:
             conn.transport.loseConnection()
             return
 
