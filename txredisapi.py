@@ -2139,6 +2139,10 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         return p
 
     def addConnection(self, conn):
+        if not self.continueTrying:
+            conn.transport.loseConnection()
+            return
+
         self.connectionQueue.put(conn)
         self.pool.append(conn)
         self.size = len(self.pool)
