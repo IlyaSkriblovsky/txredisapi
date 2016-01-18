@@ -221,6 +221,11 @@ class ReplyQueue(defer.DeferredQueue):
         self.waiting[i] = defer.Deferred()
 
 
+def _blocking_command(method):
+    method._blocking = True
+    return method
+
+
 class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     """
     Redis client protocol.
@@ -945,6 +950,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("RPOP", key)
 
+    @_blocking_command
     def blpop(self, keys, timeout=0):
         """
         Blocking LPOP
@@ -957,6 +963,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         keys.append(timeout)
         return self.execute_command("BLPOP", *keys)
 
+    @_blocking_command
     def brpop(self, keys, timeout=0):
         """
         Blocking RPOP
@@ -969,6 +976,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         keys.append(timeout)
         return self.execute_command("BRPOP", *keys)
 
+    @_blocking_command
     def brpoplpush(self, source, destination, timeout=0):
         """
         Pop a value from a list, push it to another list and return
@@ -1843,25 +1851,24 @@ class ConnectionHandler(object):
 
             def callback(connection):
                 protocol_method = getattr(connection, method)
+                blocking = getattr(protocol_method, '_blocking', False)
                 try:
                     d = protocol_method(*args, **kwargs)
                 except:
                     self._factory.connectionQueue.put(connection)
                     raise
 
-                def put_back(reply):
+                def put_back(reply=None):
                     if not connection.inTransaction and \
                        not connection.pipelining:
                         self._factory.connectionQueue.put(connection)
                     return reply
 
-                def switch_to_errback(reply):
-                    if isinstance(reply, Exception):
-                        raise reply
-                    return reply
-
-                d.addBoth(put_back)
-                d.addCallback(switch_to_errback)
+                if connection.inTransaction or connection.pipelining or \
+                   blocking:
+                    d.addBoth(put_back)
+                else:
+                    put_back()
                 return d
             d.addCallback(callback)
             return d

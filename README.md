@@ -538,11 +538,25 @@ normally return just an ``OK``.
 
 ### Pipelining ###
 
-Redis supports [pipelining](http://redis.io/topics/pipelining) multiple commands
-at once to improve performance. Currently, pipelining is NOT supported
-on sharded connections.
+txredisapi automatically [pipelines](http://redis.io/topics/pipelining) all commands
+by sending next commands without waiting for the previous one to receive reply from
+server. This works even on single connections and increases performance by reducing
+number of round-trip delays and. There are two exceptions, though:
+ - no commands will be sent after blocking `blpop`, `brpop` or `brpoplpush` until
+   response is received;
+ - transaction by `multi`/`commit` are also blocking connection making all other
+   commands to wait until transaction is executed.
 
-To execute commands in a pipeline:
+When you need to load tons of data to Redis it might be more effective to sent
+commands in batches grouping them together offline to save on TCP packets and network
+stack overhead. You can do this using `pipeline` method to explicitly accumulate
+commands and send them to server in a single batch. Be careful to not accumulate too
+many commands: unreasonable batch size may eat up unexpected amount of memory on both
+client and server side. Group commands in batches of, for example, 10k commands instead
+of sending all your data at once. The speed will be nearly the same, but the additional
+memory used will be at max the amount needed to queue this 10k commands
+
+To send commands in a batch:
 
     #!/usr/bin/env python
     # coding: utf-8
@@ -556,7 +570,7 @@ To execute commands in a pipeline:
     def main():
         rc = yield redis.ConnectionPool()
 
-        # Start pipeline
+        # Start grouping commands
         pipeline = yield rc.pipeline()
 
         pipeline.set("foo", 123)
