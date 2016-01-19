@@ -533,6 +533,10 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             raise ConnectionError("Not connected")
         else:
             command = self._build_command(*args, **kwargs)
+
+            # set timeout, reseted in lineReceived()
+            self.setTimeout(self.factory.replyTimeout)
+
             # When pipelining, buffer this command into our list of
             # pipelined commands. Otherwise, write the command immediately.
             if self.pipelining:
@@ -2149,7 +2153,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         else:
             p = self.protocol()
         p.factory = self
-        p.timeOut = self.replyTimeout
         return p
 
     def addConnection(self, conn):
