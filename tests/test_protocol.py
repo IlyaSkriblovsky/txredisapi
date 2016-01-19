@@ -95,3 +95,34 @@ class TestBaseRedisProtocol(unittest.TestCase):
     def test_build_ping(self):
         s = self._protocol._build_command("PING")
         self.assertEqual(s, six.b('*1\r\n$4\r\nPING\r\n'))
+
+class TestRedisFactory(unittest.TestCase):
+
+    def setUp(self):
+        self.timeout = 10
+        self.clock = task.Clock()
+        self.trans = StringTransportWithDisconnection()
+        self.proto = redis.RedisFactory(uuid='foobar',
+                                        dbid=None,
+                                        poolsize=1,
+                                        replyTimeout=self.timeout).buildProtocol(
+                                            ('127.0.0.1', 0))
+        self.proto.callLater = self.clock.callLater
+        self.proto.makeConnection(self.trans)
+        self.trans.protocol = self.proto
+
+    def test_ping(self):
+        d = self.proto.ping()
+        d.addCallback(self.assertEqual, 'PONG')
+        self.proto.dataReceived(six.b('+PONG\r\n'))
+        return d
+
+    def test_connection_lost(self):
+        d = self.proto.get('foobar')
+        self.trans.loseConnection()
+        return self.assertFailure(d, redis.ConnectionError)
+
+    def test_reply_timeout(self):
+        d = self.proto.get('foobar')
+        self.clock.advance(self.timeout)
+        return self.assertFailure(d, redis.ConnectionError)
