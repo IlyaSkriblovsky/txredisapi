@@ -1378,7 +1378,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         Test for existence of a specified field in a hash
         """
-        return self.execute_command("HEXISTS", key, field)
+        return self.execute_command("HEXISTS", key, field).addCallback(bool)
 
     def hdel(self, key, fields):
         """
