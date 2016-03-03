@@ -245,7 +245,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.transport.loseConnection()
         self.connectionLost('timeout')
 
-    def __init__(self, replyTimeout, charset="utf-8", errors="strict"):
+    def __init__(self, charset="utf-8", errors="strict", replyTimeout=None):
         self.charset = charset
         self.errors = errors
         self.replyTimeout = replyTimeout
@@ -2157,7 +2157,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.isLazy = isLazy
         self.charset = charset
         self.password = password
-        self.protocol.replyTimeout = replyTimeout
+        self.replyTimeout = replyTimeout
         self.convertNumbers = convertNumbers
 
         self.idx = 0
@@ -2171,9 +2171,9 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
     def buildProtocol(self, addr):
         if hasattr(self, 'charset'):
-            p = self.protocol(self.charset)
+            p = self.protocol(self.charset, replyTimeout = self.replyTimeout)
         else:
-            p = self.protocol()
+            p = self.protocol(replyTimeout = self.replyTimeout)
         p.factory = self
         return p
 
