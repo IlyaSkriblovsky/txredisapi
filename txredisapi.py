@@ -56,6 +56,9 @@ class ConnectionError(RedisError):
     pass
 
 
+class TimeoutError(RedisError):
+    pass
+
 class ResponseError(RedisError):
     pass
 
@@ -231,9 +234,21 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     Redis client protocol.
     """
 
-    def __init__(self, charset="utf-8", errors="strict"):
+    def timeoutConnection(self):
+        # timeout: if we timeout with no pending responses, just reset the watchdog
+        if not self.replyQueue.waiting:
+            self.setTimeout(self.replyTimeout)
+            return
+
+        # timeout: otherwise, close the connection
+        self.factory.continueTrying = False
+        self.transport.loseConnection()
+        self.connectionLost('timeout')
+
+    def __init__(self, replyTimeout, charset="utf-8", errors="strict"):
         self.charset = charset
         self.errors = errors
+        self.replyTimeout = replyTimeout
 
         self.bulk_length = 0
         self.bulk_buffer = bytearray()
@@ -257,6 +272,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
     @defer.inlineCallbacks
     def connectionMade(self):
+        # timeout: reply timeout must only come into effect once the connection has been established
+        self.setTimeout(self.replyTimeout)
+
         if self.factory.password is not None:
             try:
                 response = yield self.auth(self.factory.password)
@@ -292,12 +310,18 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.factory.addConnection(self)
 
     def connectionLost(self, why):
+        # timeout: cleanup timeout watchdog
+        self.setTimeout(None)
         self.connected = 0
         self.script_hashes.clear()
         self.factory.delConnection(self)
         LineReceiver.connectionLost(self, why)
         while self.replyQueue.waiting:
-            self.replyReceived(ConnectionError("Lost connection"))
+            # timeout: raise TimeoutError on timeouts
+            if why == 'timeout':
+                self.replyReceived(TimeoutError("Lost connection"))
+            else:
+                self.replyReceived(ConnectionError("Lost connection"))
 
     def lineReceived(self, line):
         """
@@ -309,6 +333,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
           "*" multi-bulk data
         """
         if line:
+            # timeout: reset timeout watchdog in each datum
             self.resetTimeout()
             token, data = line[0], line[1:]
         else:
@@ -1726,6 +1751,7 @@ class HiredisProtocol(BaseRedisProtocol):
                                       replyError=ResponseError)
 
     def dataReceived(self, data, unpause=False):
+        # reset timeout watchdog in each datum
         self.resetTimeout()
         if data:
             self._reader.feed(data)
@@ -2131,7 +2157,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.isLazy = isLazy
         self.charset = charset
         self.password = password
-        self.replyTimeout = replyTimeout
+        self.protocol.replyTimeout = replyTimeout
         self.convertNumbers = convertNumbers
 
         self.idx = 0
@@ -2149,7 +2175,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         else:
             p = self.protocol()
         p.factory = self
-        p.timeOut = self.replyTimeout
         return p
 
     def addConnection(self, conn):
