@@ -18,10 +18,10 @@ import six
 import txredisapi as redis
 
 from twisted.trial import unittest
+from twisted.internet import reactor, defer, error, protocol
 from twisted.internet.protocol import ClientFactory
 from twisted.test.proto_helpers import StringTransportWithDisconnection
 from twisted.internet import task
-
 
 class MockFactory(ClientFactory):
     pass
@@ -95,3 +95,31 @@ class TestBaseRedisProtocol(unittest.TestCase):
     def test_build_ping(self):
         s = self._protocol._build_command("PING")
         self.assertEqual(s, six.b('*1\r\n$4\r\nPING\r\n'))
+
+class TestTimeout(unittest.TestCase):
+    def test_connect_timeout(self):
+        c = redis.Connection(host = "10.255.255.1",
+            port = 8000, reconnect = False, connectTimeout = 5.0, replyTimeout = 10.0)
+        return self.assertFailure(c, error.TimeoutError)
+
+    @defer.inlineCallbacks
+    def test_reply_timeout(self):
+        factory = protocol.ServerFactory()
+        factory.protocol = PingMocker
+        handler = reactor.listenTCP(8000, factory)
+        c = yield redis.Connection(host = "127.0.0.1",
+            port = 8000, reconnect = False, connectTimeout = 1.0, replyTimeout = 1.0)
+        pong = yield c.ping()
+        self.failUnlessEqual(pong, "PONG")
+        get_one = c.get("foobar")
+        get_two = c.get("foobar")
+        yield self.assertFailure(get_one, redis.TimeoutError)
+        yield self.assertFailure(get_two, redis.TimeoutError)
+
+        yield handler.stopListening()
+        yield c.disconnect()
+
+class PingMocker(redis.LineReceiver):
+    def lineReceived(self, line):
+        if line == 'PING':
+            self.transport.write("+PONG\r\n")
