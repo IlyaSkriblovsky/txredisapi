@@ -56,7 +56,7 @@ class ConnectionError(RedisError):
     pass
 
 
-class TimeoutError(RedisError):
+class TimeoutError(ConnectionError):
     pass
 
 class ResponseError(RedisError):
@@ -1797,8 +1797,6 @@ if hiredis is not None:
 else:
     RedisProtocol = BaseRedisProtocol
 
-RedisProtocol = BaseRedisProtocol
-
 
 class MonitorProtocol(RedisProtocol):
     """
@@ -2142,14 +2140,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     maxDelay = 10
     protocol = RedisProtocol
 
-    def clientConnectionFailed(self, connector, reason):
-        if not self.continueTrying:
-            if self.deferred:
-                self.deferred.errback(reason)
-                self.deferred = None
-        else:
-            protocol.ReconnectingClientFactory(self, connector, reason)
-
     def __init__(self, uuid, dbid, poolsize, isLazy=False,
                  handler=ConnectionHandler, charset="utf-8", password=None,
                  replyTimeout=None, convertNumbers=True):
@@ -2246,6 +2236,13 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                     self.connectionQueue.put(conn)
                 defer.returnValue(conn)
 
+    def clientConnectionFailed(self, connector, reason):
+        if not self.continueTrying:
+            if self.deferred:
+                self.deferred.errback(reason)
+                self.deferred = None
+        else:
+            protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
 
 class SubscriberFactory(RedisFactory):
     protocol = SubscriberProtocol
