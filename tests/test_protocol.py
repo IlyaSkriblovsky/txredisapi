@@ -119,7 +119,38 @@ class TestTimeout(unittest.TestCase):
         yield handler.stopListening()
         yield c.disconnect()
 
+    @staticmethod
+    def _delay(time):
+        d = defer.Deferred()
+        reactor.callLater(time, d.callback, None)
+        return d
+
+    @defer.inlineCallbacks
+    def test_delayed_call(self):
+        factory = protocol.ServerFactory()
+        factory.buildProtocol = lambda addr: PingMocker(delay=2)
+        handler = reactor.listenTCP(8000, factory)
+
+        c = yield redis.Connection(host="localhost", port=8000, reconnect=False, replyTimeout=3)
+
+        try:
+            yield self._delay(2)
+            pong = yield c.ping()
+            self.assertEqual(pong, "PONG")
+        finally:
+            yield handler.stopListening()
+            yield c.disconnect()
+
 class PingMocker(redis.LineReceiver):
+    def __init__(self, delay=0):
+        self.delay = delay
+        self.calls = []
+
     def lineReceived(self, line):
         if line == 'PING':
-            self.transport.write("+PONG\r\n")
+            self.calls.append(reactor.callLater(self.delay, self.transport.write, b"+PONG\r\n"))
+
+    def connectionLost(self, reason):
+        for call in self.calls:
+            if call.active():
+                call.cancel()

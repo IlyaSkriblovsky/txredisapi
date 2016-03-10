@@ -568,6 +568,11 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             # Return deferred that will contain the result of this command.
             # Note: when using pipelining, this deferred will NOT return
             # until after execute_pipeline is called.
+
+            # timeout: reset the timeout if there are no pending requests
+            if len(self.replyQueue.waiting) == 0:
+                self.resetTimeout()
+
             r = self.replyQueue.get().addCallback(self.handle_reply)
 
             # When pipelining, we need to keep track of the deferred replies
