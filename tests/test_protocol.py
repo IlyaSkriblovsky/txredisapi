@@ -116,8 +116,8 @@ class TestTimeout(unittest.TestCase):
         yield self.assertFailure(get_one, redis.TimeoutError)
         yield self.assertFailure(get_two, redis.TimeoutError)
 
-        yield handler.stopListening()
         yield c.disconnect()
+        yield handler.stopListening()
 
     @staticmethod
     def _delay(time):
@@ -127,28 +127,65 @@ class TestTimeout(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_delayed_call(self):
-        factory = protocol.ServerFactory()
-        factory.buildProtocol = lambda addr: PingMocker(delay=2)
-        handler = reactor.listenTCP(8000, factory)
+        mockers = []
 
+        def capture_mocker(*args, **kwargs):
+            m = PingMocker(*args, **kwargs)
+            mockers.append(m)
+            return m
+
+        factory = protocol.ServerFactory()
+        factory.buildProtocol = lambda addr: capture_mocker(delay=2)
+        handler = reactor.listenTCP(8000, factory)
         c = yield redis.Connection(host="localhost", port=8000, reconnect=False, replyTimeout=3)
 
-        try:
-            yield self._delay(2)
-            pong = yield c.ping()
-            self.assertEqual(pong, "PONG")
-        finally:
-            yield handler.stopListening()
-            yield c.disconnect()
+        # first ping should succeed, since 2 < 3
+        yield self._delay(2)
+        pong = yield c.ping()
+        self.assertEqual(pong, "PONG")
+
+        for m in mockers:
+            m.pause()
+
+        # send out a few pings, on a "dead" connection
+        pings = []
+        for i in xrange(4):
+            p = c.ping()
+            pings.append(p)
+            yield self._delay(1)
+
+        # each should have failed (TBD: figure out which exact failures for each one)
+        for i, p in enumerate(pings):
+            yield self.assertFailure(p, redis.ConnectionError)
+
+        for m in mockers:
+            m.unpause()
+
+        yield c.disconnect()
+        yield handler.stopListening()
 
 class PingMocker(redis.LineReceiver):
     def __init__(self, delay=0):
         self.delay = delay
         self.calls = []
+        self.paused = False
+
+    def pause(self):
+        self.paused = True
+
+    def unpause(self):
+        self.paused = False
+
+    @defer.inlineCallbacks
+    def _pong(self):
+        while self.paused:
+            yield self._delay(0.01)
+
+        self.transport.write(b"+PONG\r\n")
 
     def lineReceived(self, line):
         if line == 'PING':
-            self.calls.append(reactor.callLater(self.delay, self.transport.write, b"+PONG\r\n"))
+            self.calls.append(reactor.callLater(self.delay, self._pong))
 
     def connectionLost(self, reason):
         for call in self.calls:
