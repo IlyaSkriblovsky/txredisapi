@@ -144,11 +144,13 @@ class TestTimeout(unittest.TestCase):
         pong = yield c.ping()
         self.assertEqual(pong, "PONG")
 
+        # kill the connection, and send it some pings
         for m in mockers:
             m.pause()
 
         # send out a few pings, on a "dead" connection
         pings = []
+
         for i in xrange(4):
             p = c.ping()
             pings.append(p)
@@ -160,6 +162,39 @@ class TestTimeout(unittest.TestCase):
 
         for m in mockers:
             m.unpause()
+
+        yield c.disconnect()
+        yield handler.stopListening()
+
+    @defer.inlineCallbacks
+    def test_delayed_call_reconnect(self):
+        mockers = []
+
+        def capture_mocker(*args, **kwargs):
+            m = PingMocker(*args, **kwargs)
+            mockers.append(m)
+            return m
+        factory = protocol.ServerFactory()
+        factory.buildProtocol = lambda addr: capture_mocker(delay=2)
+        handler = reactor.listenTCP(8001, factory)
+        c = yield redis.Connection(host="localhost", port=8001, reconnect=True, replyTimeout=3)
+
+        # pause the server
+        for m in mockers:
+            m.pause()
+
+        c._factory.continueTrying = 0
+
+        # send out a ping on a dead connection
+        yield self.assertFailure(c.ping(), redis.ConnectionError)
+
+        c._factory.continueTrying = 1
+
+        for m in mockers:
+            m.unpause()
+
+        pong = yield c.ping()
+        self.assertEqual(pong, "PONG")
 
         yield c.disconnect()
         yield handler.stopListening()

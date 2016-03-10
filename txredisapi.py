@@ -241,7 +241,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             return
 
         # timeout: otherwise, close the connection
-        self.factory.continueTrying = False
         self.transport.loseConnection()
         self.connectionLost('timeout')
 
