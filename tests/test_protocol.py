@@ -151,7 +151,7 @@ class TestTimeout(unittest.TestCase):
         # send out a few pings, on a "dead" connection
         pings = []
 
-        for i in xrange(4):
+        for i in range(4):
             p = c.ping()
             pings.append(p)
             yield self._delay(1)
