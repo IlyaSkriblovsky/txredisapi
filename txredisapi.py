@@ -274,6 +274,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         # timeout: reply timeout must only come into effect once the connection has been established
         self.setTimeout(self.replyTimeout)
 
+#        if self.continueTrying:
+#            self.resetDelay()
+
         if self.factory.password is not None:
             try:
                 response = yield self.auth(self.factory.password)
@@ -398,6 +401,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         Process and dispatch to bulkDataReceived.
         """
+        if data:
+            self.resetTimeout()
+
         if self.bulk_length:
             data, rest = data[:self.bulk_length], data[self.bulk_length:]
             self.bulk_length -= len(data)
@@ -1801,7 +1807,6 @@ if hiredis is not None:
 else:
     RedisProtocol = BaseRedisProtocol
 
-
 class MonitorProtocol(RedisProtocol):
     """
     monitor has the same behavior as subscribe: hold the connection until
@@ -2178,8 +2183,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.disconnectCalled = False
 
     def buildProtocol(self, addr):
-        self.resetDelay()
-
         if hasattr(self, 'charset'):
             p = self.protocol(self.charset, replyTimeout = self.replyTimeout)
         else:
@@ -2247,6 +2250,11 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             self.deferred.errback(ValueError(why))
             self.deferred = None
 
+    # there must be a better way to unblock requests waiting on connectionQueue
+    def _errback_connection_queue(self, err):
+        for i in range(len(self.connectionQueue.waiting)):
+            self.connectionQueue.put(err)
+
     @defer.inlineCallbacks
     def getConnection(self, put_back=False):
         if not self.continueTrying and not self.size:
@@ -2254,6 +2262,9 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
         while True:
             conn = yield self.connectionQueue.get()
+
+            if isinstance(conn, Failure):
+                conn.raieException()
             if conn.connected == 0:
                 log.msg('Discarding dead connection.')
             else:
@@ -2278,9 +2289,12 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self._delConnector(connector)
         protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
 
-        if not self._will_retry_connection() and self.deferred:
-            self.deferred.errback(reason)
-            self.deferred = None
+        if not self._will_retry_connection():
+            self._errback_connection_queue(reason)
+
+            if self.deferred != None:
+                self.deferred.errback(reason)
+                self.deferred = None
 
     def startedConnecting(self, connector):
         self._addConnector(connector)
@@ -2288,10 +2302,12 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     def clientConnectionLost(self, connector, reason):
         self._delConnector(connector)
         protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
+        if not self._will_retry_connection():
+            self._errback_connection_queue(reason)
 
-        if not self._will_retry_connection() and self.deferred:
-            self.deferred.errback(reason)
-            self.deferred = None
+            if self.deferred:
+                self.deferred.errback(reason)
+                self.deferred = None
 
     def _addConnector(self, connector):
         self.connectors.add(connector)

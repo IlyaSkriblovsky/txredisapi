@@ -108,6 +108,7 @@ class TestTimeout(unittest.TestCase):
             port = 8000, reconnect = True, connectTimeout = 1.0, replyTimeout = 10.0)
         c._factory.maxRetries = 1
         p = c.ping()
+        # this does seem to take a bit too long
         yield self.assertFailure(p, error.TimeoutError)
         yield c.disconnect()
 
