@@ -275,8 +275,8 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.setTimeout(self.replyTimeout)
 
         # need to test for this
-        if self.continueTrying:
-            self.resetDelay()
+        if self.factory.continueTrying:
+            self.factory.resetDelay()
 
         if self.factory.password is not None:
             try:
