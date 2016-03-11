@@ -274,8 +274,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         # timeout: reply timeout must only come into effect once the connection has been established
         self.setTimeout(self.replyTimeout)
 
-#        if self.continueTrying:
-#            self.resetDelay()
+        # need to test for this
+        if self.continueTrying:
+            self.resetDelay()
 
         if self.factory.password is not None:
             try:
