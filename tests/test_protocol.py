@@ -103,6 +103,15 @@ class TestTimeout(unittest.TestCase):
         return self.assertFailure(c, error.TimeoutError)
 
     @defer.inlineCallbacks
+    def test_lazy_connect_timeout(self):
+        c = redis.lazyConnection(host = "10.255.255.1",
+            port = 8000, reconnect = True, connectTimeout = 1.0, replyTimeout = 10.0)
+        c._factory.maxRetries = 1
+        p = c.ping()
+        yield self.assertFailure(p, error.TimeoutError)
+        yield c.disconnect()
+
+    @defer.inlineCallbacks
     def test_reply_timeout(self):
         factory = protocol.ServerFactory()
         factory.protocol = PingMocker

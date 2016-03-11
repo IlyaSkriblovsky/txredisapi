@@ -1864,6 +1864,7 @@ class ConnectionHandler(object):
         self._factory = factory
         self._connected = factory.deferred
 
+    @defer.inlineCallbacks
     def disconnect(self):
         self._factory.continueTrying = 0
         self._factory.disconnectCalled = True
@@ -1873,7 +1874,8 @@ class ConnectionHandler(object):
             except:
                 pass
 
-        return self._factory.waitForEmptyPool()
+        yield self._factory.waitForZeroConnectors()
+        yield self._factory.waitForEmptyPool()
 
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
@@ -2171,9 +2173,13 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.handler = handler(self)
         self.connectionQueue = defer.DeferredQueue()
         self._waitingForEmptyPool = set()
+        self._waitingForZeroConnectors = set()
+        self.connectors = set()
         self.disconnectCalled = False
 
     def buildProtocol(self, addr):
+        self.resetDelay()
+
         if hasattr(self, 'charset'):
             p = self.protocol(self.charset, replyTimeout = self.replyTimeout)
         else:
@@ -2211,6 +2217,10 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self._waitingForEmptyPool.discard(deferred)
         deferred.errback(defer.CancelledError())
 
+    def _cancelWaitForZeroConnectors(self, deferred):
+        self._waitingForZeroConnectors.discard(deferred)
+        deferred.errback(defer.CancelledError())
+
     def waitForEmptyPool(self):
         """
         Returns a Deferred which fires when the pool size has reached 0.
@@ -2219,6 +2229,17 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             return defer.succeed(None)
         d = defer.Deferred(self._cancelWaitForEmptyPool)
         self._waitingForEmptyPool.add(d)
+        return d
+
+    def waitForZeroConnectors(self):
+        """
+        Returns a Deferred which fires when the number of outstanding
+        connections/connection-attempts has reached 0.
+        """
+        if not self.connectors:
+            return defer.succeed(None)
+        d = defer.Deferred(self._cancelWaitForZeroConnectors)
+        self._waitingForZeroConnectors.add(d)
         return d
 
     def connectionError(self, why):
@@ -2240,13 +2261,49 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                     self.connectionQueue.put(conn)
                 defer.returnValue(conn)
 
-    def clientConnectionFailed(self, connector, reason):
+    # copied from ReconnectingClientFactory
+    def _will_retry_connection(self):
+        if self._callID:
+            return True
+
         if not self.continueTrying:
-            if self.deferred:
-                self.deferred.errback(reason)
-                self.deferred = None
-        else:
-            protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+            return False
+
+        if self.maxRetries is not None and (self.retries > self.maxRetries):
+            return False
+
+        return True
+
+    def clientConnectionFailed(self, connector, reason):
+        self._delConnector(connector)
+        protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+
+        if not self._will_retry_connection() and self.deferred:
+            self.deferred.errback(reason)
+            self.deferred = None
+
+    def startedConnecting(self, connector):
+        self._addConnector(connector)
+
+    def clientConnectionLost(self, connector, reason):
+        self._delConnector(connector)
+        protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
+
+        if not self._will_retry_connection() and self.deferred:
+            self.deferred.errback(reason)
+            self.deferred = None
+
+    def _addConnector(self, connector):
+        self.connectors.add(connector)
+
+    def _delConnector(self, connector):
+        self.connectors.remove(connector)
+        if len(self.connectors) == 0 and self._waitingForZeroConnectors:
+            deferreds = list(self._waitingForZeroConnectors)
+            self._waitingForZeroConnectors.clear()
+            for d in deferreds:
+                d.callback(None)
+
 
 class SubscriberFactory(RedisFactory):
     protocol = SubscriberProtocol
