@@ -209,6 +209,37 @@ class TestTimeout(unittest.TestCase):
         yield c.disconnect()
         yield handler.stopListening()
 
+
+    @defer.inlineCallbacks
+    def test_connection_lost(self):
+        mockers = []
+
+        def capture_mocker(*args, **kwargs):
+            m = PingMocker(*args, **kwargs)
+            mockers.append(m)
+            return m
+
+        factory = protocol.ServerFactory()
+        factory.buildProtocol = lambda addr: capture_mocker(delay=0)
+        handler = reactor.listenTCP(8002, factory)
+        c = yield redis.Connection(host="localhost", port=8002, reconnect=False, replyTimeout=3)
+
+        pong = yield c.ping()
+        self.assertEqual(pong, "PONG")
+
+        self.assertEquals(str(c), "<Redis Connection: 127.0.0.1:8002 - 1 connection(s)>")
+
+        for m in mockers:
+            yield m.transport.loseConnection()
+
+        yield handler.stopListening()
+        yield self._delay(1.0)
+
+        self.assertEquals(str(c), "<Redis Connection: Not connected>")
+
+        yield self.assertFailure(c.ping(), redis.ConnectionError)
+        yield c.disconnect()
+
 class PingMocker(redis.LineReceiver):
     def __init__(self, delay=0):
         self.delay = delay
