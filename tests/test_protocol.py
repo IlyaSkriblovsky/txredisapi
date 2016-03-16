@@ -26,6 +26,10 @@ from twisted.internet import task
 class MockFactory(ClientFactory):
     pass
 
+class MockLogger(object):
+    def warning(self, *args, **kwargs):
+        print args, kwargs
+        pass
 
 class LineReceiverSubclass(redis.LineReceiver):
     def lineReceived(self, line):
@@ -147,7 +151,7 @@ class TestTimeout(unittest.TestCase):
         factory = protocol.ServerFactory()
         factory.buildProtocol = lambda addr: capture_mocker(delay=2)
         handler = reactor.listenTCP(8000, factory)
-        c = yield redis.Connection(host="localhost", port=8000, reconnect=False, replyTimeout=3)
+        c = yield redis.Connection(host="localhost", port=8000, reconnect=False, replyTimeout=3, logger=MockLogger())
 
         # first ping should succeed, since 2 < 3
         yield self._delay(2)
@@ -187,7 +191,7 @@ class TestTimeout(unittest.TestCase):
         factory = protocol.ServerFactory()
         factory.buildProtocol = lambda addr: capture_mocker(delay=2)
         handler = reactor.listenTCP(8001, factory)
-        c = yield redis.Connection(host="localhost", port=8001, reconnect=True, replyTimeout=3)
+        c = yield redis.Connection(host="localhost", port=8001, reconnect=True, replyTimeout=3, logger=MockLogger())
 
         # pause the server
         for m in mockers:
@@ -222,7 +226,7 @@ class TestTimeout(unittest.TestCase):
         factory = protocol.ServerFactory()
         factory.buildProtocol = lambda addr: capture_mocker(delay=0)
         handler = reactor.listenTCP(8002, factory)
-        c = yield redis.Connection(host="localhost", port=8002, reconnect=False, replyTimeout=3)
+        c = yield redis.Connection(host="localhost", port=8002, reconnect=False, replyTimeout=3,  logger=MockLogger())
 
         pong = yield c.ping()
         self.assertEqual(pong, "PONG")
@@ -232,13 +236,19 @@ class TestTimeout(unittest.TestCase):
         for m in mockers:
             yield m.transport.loseConnection()
 
-        yield handler.stopListening()
+        # yield handler.stopListening()
         yield self._delay(1.0)
 
         self.assertEquals(str(c), "<Redis Connection: Not connected>")
 
         yield self.assertFailure(c.ping(), redis.ConnectionError)
+
+        c = yield redis.Connection(host="localhost", port=8002, reconnect=False, replyTimeout=3, logger=MockLogger())
+        pong = yield c.ping()
+        self.assertEqual(pong, "PONG")
+
         yield c.disconnect()
+        yield handler.stopListening()
 
 class PingMocker(redis.LineReceiver):
     def __init__(self, delay=0):
