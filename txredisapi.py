@@ -233,6 +233,11 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     Redis client protocol.
     """
 
+    def GetStatus(self):
+        return {
+            'replyQueue': len(self.replyQueue.waiting)
+        }
+
     def timeoutConnection(self):
         # timeout: if we timeout with no pending responses, just reset the watchdog
         if not self.replyQueue.waiting:
@@ -1873,6 +1878,11 @@ class ConnectionHandler(object):
         self._factory = factory
         self._connected = factory.deferred
 
+    def GetStatus(self):
+        return {
+            'factory': self._factory.GetStatus()
+        }
+
     @defer.inlineCallbacks
     def disconnect(self):
         self._factory.continueTrying = 0
@@ -2186,6 +2196,18 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self._waitingForZeroConnectors = set()
         self.connectors = set()
         self.disconnectCalled = False
+
+    def GetStatus(self):
+        return {
+            'protocols': [p.GetStatus() for p in self.pool],
+            'delay': str(self.delay),
+            'retries': str(self.retries),
+            'maxRetries': str(self.maxRetries),
+            '_callID': str(self._callID),
+            'connector': str(self.connector),
+            'continueTrying': str(self.continueTrying),
+        }
+
 
     def buildProtocol(self, addr):
         if hasattr(self, 'charset'):
