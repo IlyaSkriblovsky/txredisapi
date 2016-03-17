@@ -33,6 +33,7 @@ import warnings
 import zlib
 import string
 import hashlib
+import random
 
 from twisted.internet import defer
 from twisted.internet import protocol
@@ -221,9 +222,19 @@ class ReplyQueue(defer.DeferredQueue):
         self.waiting[i] = defer.Deferred()
 
 
-def _blocking_command(method):
-    method._blocking = True
-    return method
+def _blocking_command(release_on_callback):
+    """
+    Decorator used for marking protocol methods as `blocking` (methods that
+    block connection from being used for sending another requests)
+
+    release_on_callback means whether connection should be automatically
+    released when deferred returned by method is fired
+    """
+    def decorator(method):
+        method._blocking = True
+        method._release_on_callback = release_on_callback
+        return method
+    return decorator
 
 
 class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
@@ -950,7 +961,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         """
         return self.execute_command("RPOP", key)
 
-    @_blocking_command
+    @_blocking_command(release_on_callback=True)
     def blpop(self, keys, timeout=0):
         """
         Blocking LPOP
@@ -963,7 +974,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         keys.append(timeout)
         return self.execute_command("BLPOP", *keys)
 
-    @_blocking_command
+    @_blocking_command(release_on_callback=True)
     def brpop(self, keys, timeout=0):
         """
         Blocking RPOP
@@ -976,7 +987,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         keys.append(timeout)
         return self.execute_command("BRPOP", *keys)
 
-    @_blocking_command
+    @_blocking_command(release_on_callback=True)
     def brpoplpush(self, source, destination, timeout=0):
         """
         Pop a value from a list, push it to another list and return
@@ -1453,6 +1464,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.inMulti = False
             self.factory.connectionQueue.put(self)
 
+    @_blocking_command(release_on_callback=False)
     def watch(self, keys):
         if not self.inTransaction:
             self.inTransaction = True
@@ -1473,6 +1485,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     # That object must be used for further interactions within
     # the transaction. At the end, either exec() or discard()
     # must be executed.
+    @_blocking_command(release_on_callback=False)
     def multi(self, keys=None):
         self.inTransaction = True
         self.inMulti = True
@@ -1515,6 +1528,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     # Returns a proxy that works just like .multi() except that commands
     # are simply buffered to be written all at once in a pipeline.
     # http://redis.io/topics/pipelining
+    @_blocking_command(release_on_callback=False)
     def pipeline(self):
 
         # Return a deferred that returns self (rather than simply self) to allow
@@ -1522,10 +1536,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.pipelining = True
         self.pipelined_commands = []
         self.pipelined_replies = []
-        d = defer.Deferred()
-        d.addCallback(lambda x: x)
-        d.callback(self)
-        return d
+        return defer.succeed(self)
 
     @defer.inlineCallbacks
     def execute_pipeline(self):
@@ -1847,28 +1858,27 @@ class ConnectionHandler(object):
 
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
-            d = self._factory.getConnection()
+            protocol_method = getattr(self._factory.protocol, method)
+            blocking = getattr(protocol_method, '_blocking', False)
+            release_on_callback = getattr(protocol_method, '_release_on_callback', True)
+
+            d = self._factory.getConnection(peek=not blocking)
 
             def callback(connection):
-                protocol_method = getattr(connection, method)
-                blocking = getattr(protocol_method, '_blocking', False)
                 try:
-                    d = protocol_method(*args, **kwargs)
+                    d = protocol_method(connection, *args, **kwargs)
                 except:
-                    self._factory.connectionQueue.put(connection)
+                    if blocking:
+                        self._factory.connectionQueue.put(connection)
                     raise
 
-                def put_back(reply=None):
-                    if not connection.inTransaction and \
-                       not connection.pipelining:
-                        self._factory.connectionQueue.put(connection)
+                def put_back(reply):
+                    self._factory.connectionQueue.put(connection)
                     return reply
 
-                if connection.inTransaction or connection.pipelining or \
-                   blocking:
+                if blocking and release_on_callback:
                     d.addBoth(put_back)
-                else:
-                    put_back()
+
                 return d
             d.addCallback(callback)
             return d
@@ -2110,6 +2120,35 @@ class ShardedUnixConnectionHandler(ShardedConnectionHandler):
         return "<Redis Sharded Connection: %s>" % ", ".join(nodes)
 
 
+class PeekableQueue(defer.DeferredQueue):
+    """
+    A DeferredQueue that supports peeking, accessing random item without
+    removing them from the queue.
+    """
+    def __init__(self, *args, **kwargs):
+        defer.DeferredQueue.__init__(self, *args, **kwargs)
+
+        self.peekers = []
+
+    def peek(self):
+        if self.pending:
+            return defer.succeed(random.choice(self.pending))
+        else:
+            d = defer.Deferred()
+            self.peekers.append(d)
+            return d
+
+    def remove(self, item):
+        self.pending.remove(item)
+
+    def put(self, obj):
+        for d in self.peekers:
+            d.callback(obj)
+        self.peekers = []
+
+        defer.DeferredQueue.put(self, obj)
+
+
 class RedisFactory(protocol.ReconnectingClientFactory):
     maxDelay = 10
     protocol = RedisProtocol
@@ -2139,7 +2178,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.pool = []
         self.deferred = defer.Deferred()
         self.handler = handler(self)
-        self.connectionQueue = defer.DeferredQueue()
+        self.connectionQueue = PeekableQueue()
         self._waitingForEmptyPool = set()
         self.disconnectCalled = False
 
@@ -2198,17 +2237,20 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             self.deferred = None
 
     @defer.inlineCallbacks
-    def getConnection(self, put_back=False):
+    def getConnection(self, peek=False):
         if not self.continueTrying and not self.size:
             raise ConnectionError("Not connected")
 
         while True:
-            conn = yield self.connectionQueue.get()
+            if peek:
+                conn = yield self.connectionQueue.peek()
+            else:
+                conn = yield self.connectionQueue.get()
             if conn.connected == 0:
                 log.msg('Discarding dead connection.')
+                if peek:
+                    self.connectionQueue.remove(conn)
             else:
-                if put_back:
-                    self.connectionQueue.put(conn)
                 defer.returnValue(conn)
 
 
