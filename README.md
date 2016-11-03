@@ -31,6 +31,7 @@ framework.
 - Lazy Connections
 - Automatic Sharding
 - Automatic Reconnection
+- Connection using Redis Sentinel
 - Publish/Subscribe (PubSub)
 - Transactions
 - Unix Socket Connections
@@ -613,6 +614,36 @@ This is how to authenticate::
     if __name__ == "__main__":
         main()
         reactor.run()
+        
+### Connection using Redis Sentinel ###
+
+`txredisapi` can discover Redis master and slaves addresses using 
+[Redis Sentinel](http://redis.io/topics/sentinel) and automatically failover
+in case of server failure.
+
+    #!/usr/bin/env python
+    
+    from twisted.internet.task import react
+    import txredisapi
+    
+    @defer.inlineCallbacks
+    def main(reactor):
+        sentinel = txredisapi.Sentinel([("sentinel-a", 26379), ("sentinel-b", 26379), ("sentinel-c", 26379)])
+        redis = sentinel.master_for("service_name")
+        yield redis.set("foo", "bar")
+        print (yield redis.get("foo"))
+        yield redis.disconnect()
+        yield sentinel.disconnect()
+        
+    react(main)
+    
+Usual connection arguments like `dbid=N` or `poolsize=N` can be specified in
+`master_for()` call. Use `sentinel.slave_for()` to connect to one of the slaves 
+instead of master.
+
+Add `min_other_sentinels=N` to `Sentinel` constructor call to make it obey information
+only from sentinels that currently connected to specified number of other sentinels
+to minimize a risk of split-brain in case of network partitioning.
 
 
 Credits
@@ -665,3 +696,7 @@ Thanks to (in no particular order):
 - Evgeny Tataurov (etataurov)
 
   - Ability to use hiredis protocol parser
+
+- Ilya Skriblovsky (IlyaSkriblovsky)
+
+  - Sentinel support

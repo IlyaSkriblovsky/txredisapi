@@ -14,5 +14,5 @@ notifications:
         - "irc.freenode.org#cycloneweb"
 install:
     - if [[ $TEST_HIREDIS == '1' ]]; then pip install hiredis; fi
-    - pip install .
-script: trial tests/
+    - pip install . mock
+script: PYTHONPATH=. trial tests/

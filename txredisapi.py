@@ -38,6 +38,7 @@ import random
 from twisted.internet import defer
 from twisted.internet import protocol
 from twisted.internet import reactor
+from twisted.internet.tcp import Connector
 from twisted.protocols import basic
 from twisted.protocols import policies
 from twisted.python import log
@@ -415,6 +416,8 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         # The hiredis reader implicitly returns integers
         if isinstance(data, six.integer_types):
             return data
+        if isinstance(data, list):
+            return [self.tryConvertData(x) for x in data]
         el = None
         if self.factory.convertNumbers:
             if data:
@@ -1729,6 +1732,46 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         sourceKeys = list_or_args("pfmerge", sourceKeys, args)
         return self.execute_command("PFMERGE", destKey, *sourceKeys)
 
+    _SENTINEL_NODE_FLAGS = (("is_master", "master"), ("is_slave", "slave"),
+                            ("is_sdown", "s_down"), ("is_odown", "o_down"),
+                            ("is_sentinel", "sentinel"),
+                            ("is_disconnected", "disconnected"),
+                            ("is_master_down", "master_down"))
+
+    def _parse_sentinel_state(self, state_array):
+        as_dict = {
+            self.tryConvertData(key): self.tryConvertData(value)
+            for key, value in zip(state_array[::2], state_array[1::2])
+        }
+        flags = set(as_dict['flags'].split(','))
+        for bool_name, flag_name in self._SENTINEL_NODE_FLAGS:
+            as_dict[bool_name] = flag_name in flags
+        return as_dict
+
+    def sentinel_masters(self):
+        def convert(raw):
+            result = {}
+            for array in raw:
+                as_dict = self._parse_sentinel_state(array)
+                result[as_dict['name']] = as_dict
+            return result
+        return self.execute_command("SENTINEL", "MASTERS").addCallback(convert)
+
+    def sentinel_slaves(self, service_name):
+        def convert(raw):
+            return [
+                self._parse_sentinel_state(array)
+                for array in raw
+            ]
+        return self.execute_command("SENTINEL", "SLAVES", service_name)\
+            .addCallback(convert)
+
+    def sentinel_get_master_addr_by_name(self, service_name):
+        return self.execute_command("SENTINEL", "GET-MASTER-ADDR-BY-NAME", service_name)
+
+    def role(self):
+        return self.execute_command("ROLE")
+
 
 class HiredisProtocol(BaseRedisProtocol):
     def __init__(self, *args, **kwargs):
@@ -1742,11 +1785,8 @@ class HiredisProtocol(BaseRedisProtocol):
             self._reader.feed(data)
         res = self._reader.gets()
         while res is not False:
-            if isinstance(res, six.string_types) or \
-                    isinstance(res, six.binary_type):
+            if isinstance(res, (six.text_type, six.binary_type, list)):
                 res = self.tryConvertData(res)
-            elif isinstance(res, list):
-                res = list(map(self.tryConvertData, res))
             if res == "QUEUED":
                 self.transactions += 1
             else:
@@ -2490,6 +2530,196 @@ def lazyShardedUnixConnectionPool(paths, dbid=None, poolsize=10,
                                      replyTimeout, convertNumbers)
 
 
+class MasterNotFoundError(ConnectionError):
+    pass
+
+
+class SentinelRedisProtocol(RedisProtocol):
+
+    def connectionMade(self):
+        self.factory.resetDelay()
+
+        def check_role(role):
+            if self.factory.is_master and role[0] != "master":
+                self.transport.loseConnection()
+            else:
+                RedisProtocol.connectionMade(self)
+                self.factory.resetDelay()
+
+        return self.role().addCallback(check_role)
+
+
+class SentinelConnectionFactory(RedisFactory):
+
+    initialDelay = 0.1
+    protocol = SentinelRedisProtocol
+
+    def __init__(self, sentinel_manager, service_name, is_master, *args, **kwargs):
+        RedisFactory.__init__(self, *args, **kwargs)
+
+        self.sentinel_manager = sentinel_manager
+        self.service_name = service_name
+        self.is_master = is_master
+
+        self._current_master_addr = None
+        self._slave_no = 0
+
+    def clientConnectionFailed(self, connector, reason):
+        self.try_to_connect(connector)
+
+    def clientConnectionLost(self, connector, unused_reason):
+        self.try_to_connect(connector, nodelay=True)
+
+    def try_to_connect(self, connector, force_master=False, nodelay=False):
+        if not self.continueTrying:
+            return
+
+        def on_discovery_err(failure):
+            failure.trap(MasterNotFoundError)
+            log.msg("txredisapi: Can't get address from Sentinel: {}".format(failure.value))
+            reactor.callLater(self.delay, self.try_to_connect, connector)
+            self.resetDelay()
+
+        def on_master_addr(addr):
+            if self._current_master_addr is not None and \
+               self._current_master_addr != addr:
+                self.resetDelay()
+                # master has changed, dropping all alive connections
+                for conn in self.pool:
+                    conn.transport.loseConnection()
+
+            self._current_master_addr = addr
+            connector.host, connector.port = addr
+            if nodelay:
+                connector.connect()
+            else:
+                self.retry(connector)
+
+        def on_slave_addrs(addrs):
+            if addrs:
+                connector.host, connector.port = addrs[self._slave_no % len(addrs)]
+                self._slave_no += 1
+                if nodelay:
+                    connector.connect()
+                else:
+                    self.retry(connector)
+            else:
+                log.msg("txredisapi: No slaves discovered, falling back to master")
+                self.try_to_connect(connector, force_master=True, nodelay=True)
+
+        if self.is_master or force_master:
+            self.sentinel_manager.discover_master(self.service_name) \
+                .addCallbacks(on_master_addr, on_discovery_err)
+        else:
+            self.sentinel_manager.discover_slaves(self.service_name) \
+                .addCallback(on_slave_addrs)
+
+
+class Sentinel(object):
+
+    discovery_timeout = 10
+
+    def __init__(self, sentinel_addresses, min_other_sentinels=0, **connection_kwargs):
+        self.sentinels = [
+            lazyConnection(host, port, **connection_kwargs)
+            for host, port in sentinel_addresses
+        ]
+
+        self.min_other_sentinels = min_other_sentinels
+
+    def disconnect(self):
+        return defer.gatherResults([sentinel.disconnect() for sentinel in self.sentinels],
+                                   consumeErrors = True)
+
+    def check_master_state(self, state):
+        if not state["is_master"] or state["is_sdown"] or state["is_odown"]:
+            return False
+
+        if int(state["num-other-sentinels"]) < self.min_other_sentinels:
+            return False
+
+        return True
+
+    def discover_master(self, service_name):
+        result = defer.Deferred()
+
+        def on_response(response):
+            if result.called:
+                return
+
+            state = response.get(service_name)
+            if state and self.check_master_state(state):
+                result.callback((state["ip"], int(state["port"])))
+                timeout_call.cancel()
+
+        def on_timeout():
+            if not result.called:
+                result.errback(MasterNotFoundError(
+                    "No master found for {}".format(service_name)))
+
+        # Ignoring errors
+        for sentinel in self.sentinels:
+            sentinel.sentinel_masters().addCallbacks(on_response, lambda _: None)
+
+        timeout_call = reactor.callLater(self.discovery_timeout, on_timeout)
+
+        return result
+
+    @staticmethod
+    def filter_slaves(slaves):
+        """Remove slaves that are in ODOWN or SDOWN state"""
+        return [
+            (slave["ip"], int(slave["port"]))
+            for slave in slaves
+            if not slave["is_odown"] and not slave["is_sdown"]
+        ]
+
+    def discover_slaves(self, service_name):
+        result = defer.Deferred()
+
+        def on_response(response):
+            if result.called:
+                return
+
+            slaves = self.filter_slaves(response)
+            if slaves:
+                result.callback(slaves)
+                timeout_call.cancel()
+
+        def on_timeout():
+            if not result.called:
+                result.callback([])
+
+        for sentinel in self.sentinels:
+            sentinel.sentinel_slaves(service_name).addCallbacks(on_response, lambda _: None)
+
+        timeout_call = reactor.callLater(self.discovery_timeout, on_timeout)
+
+        return result
+
+    @staticmethod
+    def _connect_factory_and_return_handler(factory, poolsize):
+        for _ in range(poolsize):
+            # host and port will be rewritten by try_to_connect
+            connector = Connector("0.0.0.0", None, factory, factory.maxDelay, None, reactor)
+            factory.try_to_connect(connector, nodelay=True)
+        return factory.handler
+
+    def master_for(self, service_name, factory_class=SentinelConnectionFactory,
+                   dbid=None, poolsize=1, **connection_kwargs):
+        factory = factory_class(sentinel_manager=self, service_name=service_name,
+                                is_master=True, uuid=None, dbid=dbid,
+                                poolsize=poolsize, **connection_kwargs)
+        return self._connect_factory_and_return_handler(factory, poolsize)
+
+    def slave_for(self, service_name, factory_class=SentinelConnectionFactory,
+                  dbid=None, poolsize=1, **connection_kwargs):
+        factory = factory_class(sentinel_manager=self, service_name=service_name,
+                                is_master=False, uuid=None, dbid=dbid,
+                                poolsize=poolsize, **connection_kwargs)
+        return self._connect_factory_and_return_handler(factory, poolsize)
+
+
 __all__ = [
     Connection, lazyConnection,
     ConnectionPool, lazyConnectionPool,
@@ -2499,6 +2729,7 @@ __all__ = [
     UnixConnectionPool, lazyUnixConnectionPool,
     ShardedUnixConnection, lazyShardedUnixConnection,
     ShardedUnixConnectionPool, lazyShardedUnixConnectionPool,
+    Sentinel, MasterNotFoundError
 ]
 
 __author__ = "Alexandre Fiori"
