@@ -2576,7 +2576,7 @@ class SentinelConnectionFactory(RedisFactory):
 
         def on_discovery_err(failure):
             failure.trap(MasterNotFoundError)
-            log.msg("txredisapi: Can't get address from Sentinel: {}".format(failure.value))
+            log.msg("txredisapi: Can't get address from Sentinel: {0}".format(failure.value))
             reactor.callLater(self.delay, self.try_to_connect, connector)
             self.resetDelay()
 
@@ -2655,7 +2655,7 @@ class Sentinel(object):
         def on_timeout():
             if not result.called:
                 result.errback(MasterNotFoundError(
-                    "No master found for {}".format(service_name)))
+                    "No master found for {0}".format(service_name)))
 
         # Ignoring errors
         for sentinel in self.sentinels:
