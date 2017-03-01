@@ -1739,10 +1739,10 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                             ("is_master_down", "master_down"))
 
     def _parse_sentinel_state(self, state_array):
-        as_dict = {
-            self.tryConvertData(key): self.tryConvertData(value)
+        as_dict = dict(
+            (self.tryConvertData(key), self.tryConvertData(value))
             for key, value in zip(state_array[::2], state_array[1::2])
-        }
+        )
         flags = set(as_dict['flags'].split(','))
         for bool_name, flag_name in self._SENTINEL_NODE_FLAGS:
             as_dict[bool_name] = flag_name in flags
@@ -1799,8 +1799,8 @@ class HiredisProtocol(BaseRedisProtocol):
         if isinstance(result, list):
             return [self._convert_bin_values(x) for x in result]
         elif isinstance(result, dict):
-            return {self._convert_bin_values(k): self._convert_bin_values(v)
-                    for k, v in six.iteritems(result)}
+            return dict((self._convert_bin_values(k), self._convert_bin_values(v))
+                        for k, v in six.iteritems(result))
         elif isinstance(result, six.binary_type):
             return self.tryConvertData(result)
         return result
@@ -2576,7 +2576,7 @@ class SentinelConnectionFactory(RedisFactory):
 
         def on_discovery_err(failure):
             failure.trap(MasterNotFoundError)
-            log.msg("txredisapi: Can't get address from Sentinel: {}".format(failure.value))
+            log.msg("txredisapi: Can't get address from Sentinel: {0}".format(failure.value))
             reactor.callLater(self.delay, self.try_to_connect, connector)
             self.resetDelay()
 
@@ -2655,7 +2655,7 @@ class Sentinel(object):
         def on_timeout():
             if not result.called:
                 result.errback(MasterNotFoundError(
-                    "No master found for {}".format(service_name)))
+                    "No master found for {0}".format(service_name)))
 
         # Ignoring errors
         for sentinel in self.sentinels:

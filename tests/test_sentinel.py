@@ -52,7 +52,7 @@ class FakeSentinelProtocol(FakeRedisProtocol):
             service_name = request[2]
             if service_name == self.factory.service_name:
                 response = [
-                    ["name", "{}:{}".format(host, port),
+                    ["name", "{0}:{1}".format(host, port),
                      "ip", host,
                      "port", port,
                      "flags", flags,
