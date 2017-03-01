@@ -25,6 +25,10 @@ sharding.
 This driver is distributed as part of the [cyclone](http://cyclone.io) web
 framework.
 
+### Changelog ###
+
+See [CHANGELOG.md](CHANGELOG.md)
+
 ### Features ###
 
 - Connection Pools
