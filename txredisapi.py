@@ -58,6 +58,9 @@ class ConnectionError(RedisError):
     pass
 
 
+class TimeoutError(ConnectionError):
+    pass
+
 class ResponseError(RedisError):
     pass
 
@@ -243,9 +246,20 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
     Redis client protocol.
     """
 
-    def __init__(self, charset="utf-8", errors="strict"):
+    def timeoutConnection(self):
+        # timeout: if we timeout with no pending responses, just reset the watchdog
+        if not self.replyQueue.waiting:
+            self.setTimeout(self.replyTimeout)
+            return
+
+        # timeout: otherwise, close the connection
+        self.transport.loseConnection()
+        self.connectionLost('timeout')
+
+    def __init__(self, charset="utf-8", errors="strict", replyTimeout=None):
         self.charset = charset
         self.errors = errors
+        self.replyTimeout = replyTimeout
 
         self.bulk_length = 0
         self.bulk_buffer = bytearray()
@@ -269,6 +283,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
     @defer.inlineCallbacks
     def connectionMade(self):
+        # timeout: reply timeout must only come into effect once the connection has been established
+        self.setTimeout(self.replyTimeout)
+
         if self.factory.password is not None:
             try:
                 response = yield self.auth(self.factory.password)
@@ -304,12 +321,18 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.factory.addConnection(self)
 
     def connectionLost(self, why):
+        # timeout: cleanup timeout watchdog
+        self.setTimeout(None)
         self.connected = 0
         self.script_hashes.clear()
         self.factory.delConnection(self)
         LineReceiver.connectionLost(self, why)
         while self.replyQueue.waiting:
-            self.replyReceived(ConnectionError("Lost connection"))
+            # timeout: raise TimeoutError on timeouts
+            if why == 'timeout':
+                self.replyReceived(TimeoutError("Lost connection"))
+            else:
+                self.replyReceived(ConnectionError("Lost connection"))
 
     def lineReceived(self, line):
         """
@@ -321,6 +344,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
           "*" multi-bulk data
         """
         if line:
+            # timeout: reset timeout watchdog in each datum
             self.resetTimeout()
             token, data = line[0], line[1:]
         else:
@@ -557,6 +581,11 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             # Return deferred that will contain the result of this command.
             # Note: when using pipelining, this deferred will NOT return
             # until after execute_pipeline is called.
+
+            # timeout: reset the timeout if there are no pending requests
+            if len(self.replyQueue.waiting) == 0:
+                self.resetTimeout()
+
             r = self.replyQueue.get().addCallback(self.handle_reply)
 
             # When pipelining, we need to keep track of the deferred replies
@@ -1780,6 +1809,7 @@ class HiredisProtocol(BaseRedisProtocol):
                                       replyError=ResponseError)
 
     def dataReceived(self, data, unpause=False):
+        # reset timeout watchdog in each datum
         self.resetTimeout()
         if data:
             self._reader.feed(data)
@@ -1885,6 +1915,7 @@ class ConnectionHandler(object):
         self._factory = factory
         self._connected = factory.deferred
 
+    @defer.inlineCallbacks
     def disconnect(self):
         self._factory.continueTrying = 0
         self._factory.disconnectCalled = True
@@ -1894,7 +1925,8 @@ class ConnectionHandler(object):
             except:
                 pass
 
-        return self._factory.waitForEmptyPool()
+        yield self._factory.waitForZeroConnectors()
+        yield self._factory.waitForEmptyPool()
 
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
@@ -2220,15 +2252,18 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.handler = handler(self)
         self.connectionQueue = PeekableQueue()
         self._waitingForEmptyPool = set()
+        self._waitingForZeroConnectors = set()
+        self.connectors = set()
         self.disconnectCalled = False
 
     def buildProtocol(self, addr):
+        self.resetDelay()
+
         if hasattr(self, 'charset'):
-            p = self.protocol(self.charset)
+            p = self.protocol(self.charset, replyTimeout = self.replyTimeout)
         else:
-            p = self.protocol()
+            p = self.protocol(replyTimeout = self.replyTimeout)
         p.factory = self
-        p.timeOut = self.replyTimeout
         return p
 
     def addConnection(self, conn):
@@ -2261,6 +2296,10 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self._waitingForEmptyPool.discard(deferred)
         deferred.errback(defer.CancelledError())
 
+    def _cancelWaitForZeroConnectors(self, deferred):
+        self._waitingForZeroConnectors.discard(deferred)
+        deferred.errback(defer.CancelledError())
+
     def waitForEmptyPool(self):
         """
         Returns a Deferred which fires when the pool size has reached 0.
@@ -2269,6 +2308,17 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             return defer.succeed(None)
         d = defer.Deferred(self._cancelWaitForEmptyPool)
         self._waitingForEmptyPool.add(d)
+        return d
+
+    def waitForZeroConnectors(self):
+        """
+        Returns a Deferred which fires when the number of outstanding
+        connections/connection-attempts has reached 0.
+        """
+        if not self.connectors:
+            return defer.succeed(None)
+        d = defer.Deferred(self._cancelWaitForZeroConnectors)
+        self._waitingForZeroConnectors.add(d)
         return d
 
     def connectionError(self, why):
@@ -2292,6 +2342,49 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                     self.connectionQueue.remove(conn)
             else:
                 defer.returnValue(conn)
+
+    # copied from ReconnectingClientFactory
+    def _will_retry_connection(self):
+        if self._callID:
+            return True
+
+        if not self.continueTrying:
+            return False
+
+        if self.maxRetries is not None and (self.retries > self.maxRetries):
+            return False
+
+        return True
+
+    def clientConnectionFailed(self, connector, reason):
+        self._delConnector(connector)
+        protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+
+        if not self._will_retry_connection() and self.deferred:
+            self.deferred.errback(reason)
+            self.deferred = None
+
+    def startedConnecting(self, connector):
+        self._addConnector(connector)
+
+    def clientConnectionLost(self, connector, reason):
+        self._delConnector(connector)
+        protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
+
+        if not self._will_retry_connection() and self.deferred:
+            self.deferred.errback(reason)
+            self.deferred = None
+
+    def _addConnector(self, connector):
+        self.connectors.add(connector)
+
+    def _delConnector(self, connector):
+        self.connectors.remove(connector)
+        if len(self.connectors) == 0 and self._waitingForZeroConnectors:
+            deferreds = list(self._waitingForZeroConnectors)
+            self._waitingForZeroConnectors.clear()
+            for d in deferreds:
+                d.callback(None)
 
 
 class SubscriberFactory(RedisFactory):
