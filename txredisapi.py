@@ -792,8 +792,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
     def mset(self, mapping):
         """
-        Set the respective fields to the respective values.
-        HMSET replaces old values with new values.
+        Set the respective keys to the respective values.
         """
         items = []
         for pair in six.iteritems(mapping):
