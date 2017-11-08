@@ -1,6 +1,6 @@
 # Changelog
 
-## Release 1.4.5 (UNRELEASED)
+## Release 1.4.5 (2017-11-08)
 
 ### Features
 
