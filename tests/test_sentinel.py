@@ -108,7 +108,6 @@ class FakeRedisFactory(Factory):
 
 class FakeAuthenticatedRedisFactory(FakeRedisFactory):
     def __init__(self, requirepass):
-        FakeRedisFactory.__init__(self)
         self.requirepass = requirepass
 
     def buildProtocol(self, addr):
