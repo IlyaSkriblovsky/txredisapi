@@ -22,7 +22,7 @@ twisted_version = py_version == (2, 6) and 'twisted<15.5' or 'twisted'
 
 setuptools.setup(
     name="txredisapi",
-    version="1.4.5",
+    version="1.4.6",
     py_modules=["txredisapi"],
     install_requires=[twisted_version, "six"],
     author="Alexandre Fiori",

@@ -1,5 +1,12 @@
 # Changelog
 
+## Release 1.4.6 (2017-12-27)
+
+### Bugfixes
+
+- Fixed authentication with Sentinel
+
+
 ## Release 1.4.5 (2017-11-08)
 
 ### Features
