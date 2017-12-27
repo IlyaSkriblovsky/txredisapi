@@ -30,11 +30,37 @@ class FakeRedisProtocol(BaseRedisProtocol):
         self.transport.write(b''.join([b"-ERR ", msg.encode("utf-8"), b"\r\n"]))
 
     def replyReceived(self, request):
-        if request[0] == "ROLE":
-            self.send_reply(self.factory.role)
+        if isinstance(request, list):
+            if request[0] == "ROLE":
+                self.send_reply(self.factory.role)
 
+            else:
+                self.send_error("Command not supported")
         else:
-            self.send_error("Command not supported")
+            BaseRedisProtocol.replyReceived(self, request)
+
+
+class FakeAuthenticatedRedisProtocol(FakeRedisProtocol):
+    def __init__(self, requirepass):
+        FakeRedisProtocol.__init__(self)
+        self.requirepass = requirepass
+        self.authenticated = False
+
+    def replyReceived(self, request):
+        if isinstance(request, list):
+            if request[0] == "AUTH":
+                if request[1] == self.requirepass:
+                    self.authenticated = True
+                    self.send_reply("OK")
+                else:
+                    self.send_error("invalid password")
+            else:
+                if self.authenticated:
+                    FakeRedisProtocol.replyReceived(self, request)
+                else:
+                    self.send_error("authentication required")
+        else:
+            FakeRedisProtocol.replyReceived(self, request)
 
 
 class FakeSentinelProtocol(FakeRedisProtocol):
@@ -78,6 +104,16 @@ class FakeRedisFactory(Factory):
 
     def addConnection(self, conn): pass
     def delConnection(self, conn): pass
+
+
+class FakeAuthenticatedRedisFactory(FakeRedisFactory):
+    def __init__(self, requirepass):
+        self.requirepass = requirepass
+
+    def buildProtocol(self, addr):
+        proto = FakeAuthenticatedRedisProtocol(self.requirepass)
+        proto.factory = self
+        return proto
 
 
 class FakeSentinelFactory(FakeRedisFactory):
@@ -286,4 +322,36 @@ class TestConnectViaSentinel(TestCase):
         self.assertTrue(len(addrs), 3)
         self.assertTrue(all(addr.port == self.slave_port for addr in addrs))
 
+        yield conn.disconnect()
+
+
+class TestAuthViaSentinel(TestCase):
+    master_port = 36379
+    sentinel_port = 46379
+
+    def setUp(self):
+        self.fake_master = FakeAuthenticatedRedisFactory('secret!')
+        self.master_listener = reactor.listenTCP(self.master_port, self.fake_master)
+
+        self.fake_sentinel = FakeSentinelFactory()
+        self.fake_sentinel.master_addr = ("127.0.0.1", self.master_port)
+        self.fake_sentinel.slave_addrs = []
+        self.fake_sentinel.slave_flags = []
+        self.sentinel_listener = reactor.listenTCP(self.sentinel_port, self.fake_sentinel)
+
+        self.client = Sentinel([("127.0.0.1", self.sentinel_port)])
+        self.client.discovery_timeout = 1
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.client.disconnect()
+        self.sentinel_listener.stopListening()
+        self.master_listener.stopListening()
+
+
+    @defer.inlineCallbacks
+    def test_auth(self):
+        conn = self.client.master_for("test", password='secret!')
+        reply = yield conn.role()
+        self.assertEqual(reply[0], "master")
         yield conn.disconnect()

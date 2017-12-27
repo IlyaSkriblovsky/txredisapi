@@ -2549,6 +2549,9 @@ class SentinelRedisProtocol(RedisProtocol):
                 RedisProtocol.connectionMade(self)
                 self.factory.resetDelay()
 
+        if self.factory.password is not None:
+            self.auth(self.factory.password)
+
         return self.role().addCallback(check_role)
 
 
