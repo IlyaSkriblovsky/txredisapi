@@ -98,13 +98,6 @@ class FakeRedisFactory(Factory):
 
     role = ["master", 0, ["127.0.0.1", 63791, 0]]
 
-    convertNumbers = True
-    password = None
-    dbid = None
-
-    def addConnection(self, conn): pass
-    def delConnection(self, conn): pass
-
 
 class FakeAuthenticatedRedisFactory(FakeRedisFactory):
     def __init__(self, requirepass):
