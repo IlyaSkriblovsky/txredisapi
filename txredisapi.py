@@ -599,7 +599,8 @@ class BaseRedisProtocol(LineReceiver):
             response = self.replyQueue.get().addCallback(self.handle_reply)
             response.addBoth(fire_result)
 
-            if self.replyTimeout:
+            apply_timeout = kwargs.get('apply_timeout', True)
+            if self.replyTimeout and apply_timeout:
                 delayed_call = None
 
                 def fire_timeout():
@@ -1031,7 +1032,7 @@ class BaseRedisProtocol(LineReceiver):
             keys = list(keys)
 
         keys.append(timeout)
-        return self.execute_command("BLPOP", *keys)
+        return self.execute_command("BLPOP", *keys, apply_timeout=False)
 
     @_blocking_command(release_on_callback=True)
     def brpop(self, keys, timeout=0):
@@ -1044,7 +1045,7 @@ class BaseRedisProtocol(LineReceiver):
             keys = list(keys)
 
         keys.append(timeout)
-        return self.execute_command("BRPOP", *keys)
+        return self.execute_command("BRPOP", *keys, apply_timeout=False)
 
     @_blocking_command(release_on_callback=True)
     def brpoplpush(self, source, destination, timeout=0):
@@ -1052,7 +1053,7 @@ class BaseRedisProtocol(LineReceiver):
         Pop a value from a list, push it to another list and return
         it; or block until one is available.
         """
-        return self.execute_command("BRPOPLPUSH", source, destination, timeout)
+        return self.execute_command("BRPOPLPUSH", source, destination, timeout, apply_timeout=False)
 
     def rpoplpush(self, srckey, dstkey):
         """

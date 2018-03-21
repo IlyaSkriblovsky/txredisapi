@@ -102,10 +102,22 @@ class SlowServerProtocol(FakeRedisProtocol):
 
     def replyReceived(self, request):
         if isinstance(request, list):
-            if request[0] == "GET":
+            command = request[0]
+            if command == "GET":
                 name = request[1]
                 if name in self.storage:
                     self.send_reply(self.storage[name])
+            elif command == "BLPOP":
+                name = request[1]
+                timeout = request[2]
+
+                def do_reply():
+                    try:
+                        value = self.storage[name].pop(0)
+                    except (AttributeError, IndexError):
+                        value = None
+                    self.send_reply(value)
+                self.callLater(timeout, do_reply)
             else:
                 self.send_error("Command not supported")
         else:
@@ -193,3 +205,36 @@ class TestTimeouts(unittest.TestCase):
         pump.flush()
         self.failureResultOf(result1, redis.TimeoutError)
         self.failureResultOf(result2, redis.ConnectionError)
+
+
+    def test_blockingOps(self):
+        """
+        replyTimeout should not be applied to blocking commands:
+        blpop, brpop, brpoplpush
+        """
+        client, server, pump = self._clientAndServer(1, 0, {'x': 42})
+
+        result1 = client.blpop('x', timeout=5)
+        pump.flush()
+        self.clock.pump([0, 4])
+        pump.flush()
+        self.assertNoResult(result1)
+        self.clock.pump([0, 1.1])
+        pump.flush()
+        self.assertEqual(self.successResultOf(result1), None)
+
+
+
+class TestTimeoutsOnRealServer(unittest.TestCase):
+    @defer.inlineCallbacks
+    def test_blockingOps(self):
+        """
+        replyTimeout should not be applied to blocking commands:
+        blpop, brpop, brpoplpush
+        """
+        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, dbid=1,
+                                    reconnect=False, replyTimeout=1)
+        self.addCleanup(db.disconnect)
+
+        result1 = yield db.brpop('x', timeout=2)
+        self.assertIs(result1, None)

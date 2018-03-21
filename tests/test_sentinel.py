@@ -10,6 +10,9 @@ from txredisapi import BaseRedisProtocol, Sentinel, MasterNotFoundError
 class FakeRedisProtocol(BaseRedisProtocol):
     @classmethod
     def _encode_value(cls, value):
+        if value is None:
+            return b'$-1\r\n'
+
         if isinstance(value, (list, tuple)):
             parts = [b'*', str(len(value)).encode('ascii'), b'\r\n']
             parts.extend(cls._encode_value(x) for x in value)
