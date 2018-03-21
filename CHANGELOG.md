@@ -1,5 +1,15 @@
 # Changelog
 
+## Release 1.4.6 (UNRELEASED)
+
+### Bugfixes
+
+- replyTimeout connection argument fixed. All query methods except `blpop()`,
+  `brpop()`, `brpoplpush()` now raise `TimeoutError` if reply wasn't received
+  within `replyTimeout` seconds.
+
+---
+
 ## Release 1.4.5 (2017-11-08)
 
 ### Features
