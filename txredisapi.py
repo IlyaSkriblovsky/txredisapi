@@ -621,7 +621,7 @@ class BaseRedisProtocol(LineReceiver):
             # so that we can wait for them in a DeferredList when
             # execute_pipeline is called.
             if self.pipelining:
-                self.pipelined_replies.append(response)
+                self.pipelined_replies.append(result)
 
             if self.inMulti:
                 self.post_proc.append(kwargs.get("post_proc"))
@@ -1894,7 +1894,7 @@ class MonitorProtocol(RedisProtocol):
         self.messageReceived(reply)
 
     def monitor(self):
-        return self.execute_command("MONITOR")
+        return self.execute_command("MONITOR", apply_timeout=False)
 
     def stop(self):
         self.transport.loseConnection()
@@ -1922,7 +1922,7 @@ class SubscriberProtocol(RedisProtocol):
     def subscribe(self, channels):
         if isinstance(channels, six.string_types):
             channels = [channels]
-        return self.execute_command("SUBSCRIBE", *channels)
+        return self.execute_command("SUBSCRIBE", *channels, apply_timeout=False)
 
     def unsubscribe(self, channels):
         if isinstance(channels, six.string_types):
@@ -1932,7 +1932,7 @@ class SubscriberProtocol(RedisProtocol):
     def psubscribe(self, patterns):
         if isinstance(patterns, six.string_types):
             patterns = [patterns]
-        return self.execute_command("PSUBSCRIBE", *patterns)
+        return self.execute_command("PSUBSCRIBE", *patterns, apply_timeout=False)
 
     def punsubscribe(self, patterns):
         if isinstance(patterns, six.string_types):
