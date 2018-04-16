@@ -2290,7 +2290,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                           convertNumbers=self.convertNumbers)
         p.factory = self
         p.whenConnected().addCallback(self.addConnection)
-        p.whenDisconnected().addCallback(self.delConnection)
         return p
 
     def addConnection(self, conn):
@@ -2298,6 +2297,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             conn.transport.loseConnection()
             return
 
+        conn.whenDisconnected().addCallback(self.delConnection)
         self.connectionQueue.put(conn)
         self.pool.append(conn)
         self.size = len(self.pool)
