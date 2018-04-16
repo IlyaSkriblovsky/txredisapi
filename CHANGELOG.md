@@ -1,5 +1,13 @@
 # Changelog
 
+## Release 1.4.6 (UNRELEASED)
+
+### Bugfixes
+
+- allow any commands to be sent via SubscriberProtocol
+
+---
+
 ## Release 1.4.5 (2017-11-08)
 
 ### Features
