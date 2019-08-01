@@ -1479,6 +1479,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.factory.continueTrying = False
         return self.execute_command("SHUTDOWN")
 
+    def cluster(self, command):
+        return self.execute_command('CLUSTER', command)
+
     def bgrewriteaof(self):
         """
         Rewrite the append only file in background when it gets too big
