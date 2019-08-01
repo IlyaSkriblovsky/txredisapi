@@ -81,28 +81,3 @@ class LargeMultiBulk(unittest.TestCase):
             yield self.db.set(self._KEY, x)
             r = yield self.db.get(self._KEY)
             self.assertEqual(r, x)
-
-
-class NestedMultiBulk(unittest.TestCase):
-    @defer.inlineCallbacks
-    def testNestedMultiBulkTransaction(self):
-        db = yield redis.Connection(REDIS_HOST, REDIS_PORT, reconnect=False)
-
-        test1 = {u"foo1": u"bar1", u"something": u"else"}
-        test2 = {u"foo2": u"bar2", u"something": u"else"}
-
-        t = yield db.multi()
-        yield t.hmset("txredisapi:nmb:test1", test1)
-        yield t.hgetall("txredisapi:nmb:test1")
-        yield t.hmset("txredisapi:nmb:test2", test2)
-        yield t.hgetall("txredisapi:nmb:test2")
-        r = yield t.commit()
-
-        self.assertEqual(r[0], "OK")
-        self.assertEqual(sorted(r[1].keys()), sorted(test1.keys()))
-        self.assertEqual(sorted(r[1].values()), sorted(test1.values()))
-        self.assertEqual(r[2], "OK")
-        self.assertEqual(sorted(r[3].keys()), sorted(test2.keys()))
-        self.assertEqual(sorted(r[3].values()), sorted(test2.values()))
-
-        yield db.disconnect()

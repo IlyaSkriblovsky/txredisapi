@@ -28,7 +28,7 @@ class MockFactory(ClientFactory):
 
 class MockLogger(object):
     def warning(self, *args, **kwargs):
-        print args, kwargs
+        print(args, kwargs)
         pass
 
 class LineReceiverSubclass(redis.LineReceiver):

@@ -21,7 +21,7 @@ import txredisapi as redis
 from tests.mixins import REDIS_HOST, REDIS_PORT
 
 cnt_LineReceiver = 0
-cnt_HiredisProtocol = 0
+cnt_RedisProtocol = 0
 
 
 class _CallCounter(object):
@@ -52,9 +52,9 @@ class TestImplicitPipelining(unittest.TestCase):
         cnt_LineReceiver = _CallCounter(redis.LineReceiver.dataReceived)
         self.patch(redis.LineReceiver, 'dataReceived',
                    cnt_LineReceiver.get_callee())
-        cnt_HiredisProtocol = _CallCounter(redis.HiredisProtocol.dataReceived)
-        self.patch(redis.HiredisProtocol, 'dataReceived',
-                   cnt_HiredisProtocol.get_callee())
+        cnt_RedisProtocol = _CallCounter(redis.RedisProtocol.dataReceived)
+        self.patch(redis.RedisProtocol, 'dataReceived',
+                   cnt_RedisProtocol.get_callee())
 
         for i in range(5):
             db.set(self.KEY, self.VALUE)
@@ -62,7 +62,7 @@ class TestImplicitPipelining(unittest.TestCase):
         yield db.get(self.KEY)
 
         total_data_chunks = cnt_LineReceiver.call_count + \
-            cnt_HiredisProtocol.call_count
+            cnt_RedisProtocol.call_count
         self.assertEqual(total_data_chunks, 1)
 
         yield db.disconnect()

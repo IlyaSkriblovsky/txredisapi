@@ -25,7 +25,6 @@
 import six
 
 import operator
-import re
 import warnings
 import string
 import hashlib
@@ -1712,8 +1711,6 @@ class ConnectionHandler(object):
             return "<Redis Connection: %s:%s - %d connection(s)>" % \
                    (cli.host, cli.port, self._factory.size)
 
-
-_findhash = re.compile(r'.+\{(.*)\}.*')
 
 class PeekableQueue(defer.DeferredQueue):
     """

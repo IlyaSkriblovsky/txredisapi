@@ -1,20 +1,9 @@
 language: python
+dist: xenial
 services:
     - redis
-
 python:
-    - 2.6
-    - 2.7
-    - 3.4
-    - 3.5
-    - 3.6
-env:
-    - TEST_HIREDIS=0
-    - TEST_HIREDIS=1
-notifications:
-    irc:
-        - "irc.freenode.org#cycloneweb"
+    - 3.7
 install:
-    - if [[ $TEST_HIREDIS == '1' ]]; then pip install hiredis; fi
-    - pip install . mock
+    - pip install . hiredis mock
 script: PYTHONPATH=. trial tests/

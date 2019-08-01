@@ -60,17 +60,3 @@ class TestConnectionMethods(unittest.TestCase):
         db = yield db._connected
         self.assertEqual(isinstance(db, redis.ConnectionHandler), True)
         yield db.disconnect()
-
-    @defer.inlineCallbacks
-    def test_ShardedConnection(self):
-        hosts = ["%s:%s" % (REDIS_HOST, REDIS_PORT)]
-        db = yield redis.ShardedConnection(hosts, reconnect=False)
-        self.assertEqual(isinstance(db, redis.ShardedConnectionHandler), True)
-        yield db.disconnect()
-
-    @defer.inlineCallbacks
-    def test_ShardedConnectionPool(self):
-        hosts = ["%s:%s" % (REDIS_HOST, REDIS_PORT)]
-        db = yield redis.ShardedConnectionPool(hosts, reconnect=False)
-        self.assertEqual(isinstance(db, redis.ShardedConnectionHandler), True)
-        yield db.disconnect()
