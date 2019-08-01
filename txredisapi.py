@@ -265,13 +265,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.multi_bulk = MultiBulkStorage()
 
         self.replyQueue = ReplyQueue()
-
-        self.transactions = 0
-        self.inTransaction = False
-        self.inMulti = False
-        self.unwatch_cc = lambda: ()
-        self.commit_cc = lambda: ()
-
         self.script_hashes = set()
 
     @defer.inlineCallbacks
@@ -378,14 +371,10 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                     self.multiBulkDataReceived()
 
         elif token == "+":  # single line status
-            if data == "QUEUED":
-                self.transactions += 1
-                self.replyReceived(data)
+            if self.multi_bulk.pending:
+                self.handleMultiBulkElement(data)
             else:
-                if self.multi_bulk.pending:
-                    self.handleMultiBulkElement(data)
-                else:
-                    self.replyReceived(data)
+                self.replyReceived(data)
 
         elif token == "-":  # error
             reply = ResponseError(data[4:] if data[:4] == "ERR" else data)
@@ -491,29 +480,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         if not self.multi_bulk.pending:
             reply = self.multi_bulk.items
             self.multi_bulk = MultiBulkStorage()
-
-            reply = self.handleTransactionData(reply)
-
             self.replyReceived(reply)
-
-    def handleTransactionData(self, reply):
-        if self.inTransaction and isinstance(reply, list):
-            # watch or multi has been called
-            if self.transactions > 0:
-                # multi: this must be an exec [commit] reply
-                self.transactions -= len(reply)
-            if self.transactions == 0:
-                self.commit_cc()
-            if not self.inTransaction:  # multi: this must be an exec reply
-                tmp = []
-                for f, v in zip(self.post_proc[1:], reply):
-                    if callable(f):
-                        tmp.append(f(v))
-                    else:
-                        tmp.append(v)
-                    reply = tmp
-            self.post_proc = []
-        return reply
 
     def replyReceived(self, reply):
         """
@@ -584,13 +551,11 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
             r = self.replyQueue.get().addCallback(self.handle_reply)
 
-            if self.inMulti:
-                self.post_proc.append(kwargs.get("post_proc"))
-            else:
-                if "post_proc" in kwargs:
-                    f = kwargs["post_proc"]
-                    if callable(f):
-                        r.addCallback(f)
+            if "post_proc" in kwargs:
+                f = kwargs["post_proc"]
+                if callable(f):
+                    r.addCallback(f)
+
             return r
 
     ##
@@ -1480,73 +1445,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         return self.execute_command("SORT", *pieces)
 
-    def _clear_txstate(self):
-        if self.inTransaction:
-            self.inTransaction = False
-            self.inMulti = False
-            self.factory.connectionQueue.put(self)
-
-    @_blocking_command(release_on_callback=False)
-    def watch(self, keys):
-        if not self.inTransaction:
-            self.inTransaction = True
-            self.inMulti = False
-            self.unwatch_cc = self._clear_txstate
-            self.commit_cc = lambda: ()
-        if isinstance(keys, six.string_types):
-            keys = [keys]
-        d = self.execute_command("WATCH", *keys).addCallback(self._tx_started)
-        return d
-
-    def unwatch(self):
-        self.unwatch_cc()
-        return self.execute_command("UNWATCH")
-
-    # Transactions
-    # multi() will return a deferred with a "connection" object
-    # That object must be used for further interactions within
-    # the transaction. At the end, either exec() or discard()
-    # must be executed.
-    @_blocking_command(release_on_callback=False)
-    def multi(self, keys=None):
-        self.inTransaction = True
-        self.inMulti = True
-        self.unwatch_cc = lambda: ()
-        self.commit_cc = self._clear_txstate
-        if keys is not None:
-            d = self.watch(keys)
-            d.addCallback(lambda _: self.execute_command("MULTI"))
-        else:
-            d = self.execute_command("MULTI")
-        d.addCallback(self._tx_started)
-        return d
-
-    def _tx_started(self, response):
-        if response != 'OK':
-            raise RedisError('Invalid response: %s' % response)
-        return self
-
-    def _commit_check(self, response):
-        if response is None:
-            self.transactions = 0
-            self._clear_txstate()
-            raise WatchError("Transaction failed")
-        else:
-            return response
-
-    def commit(self):
-        if self.inMulti is False:
-            raise RedisError("Not in transaction")
-        return self.execute_command("EXEC").addCallback(self._commit_check)
-
-    def discard(self):
-        if self.inMulti is False:
-            raise RedisError("Not in transaction")
-        self.post_proc = []
-        self.transactions = 0
-        self._clear_txstate()
-        return self.execute_command("DISCARD")
-
     # see the SubscriberProtocol for subscribing to channels
     def publish(self, channel, message):
         """
@@ -1724,10 +1622,6 @@ class RedisProtocol(BaseRedisProtocol):
         while res is not False:
             if isinstance(res, (six.text_type, six.binary_type, list)):
                 res = self.tryConvertData(res)
-            if res == "QUEUED":
-                self.transactions += 1
-            else:
-                res = self.handleTransactionData(res)
 
             self.replyReceived(res)
             res = self._reader.gets()
@@ -2046,14 +1940,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             self._waitingForZeroConnectors.clear()
             for d in deferreds:
                 d.callback(None)
-
-
-class SubscriberFactory(RedisFactory):
-    protocol = SubscriberProtocol
-
-    def __init__(self, isLazy=False, handler=ConnectionHandler):
-        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
-                              handler=handler)
 
 
 def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
