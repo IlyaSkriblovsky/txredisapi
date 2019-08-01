@@ -274,10 +274,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
 
         self.script_hashes = set()
 
-        self.pipelining = False
-        self.pipelined_commands = []
-        self.pipelined_replies = []
-
     @defer.inlineCallbacks
     def connectionMade(self):
         # timeout: reply timeout must only come into effect once the connection has been established
@@ -578,28 +574,15 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             raise ConnectionError("Not connected")
         else:
             command = self._build_command(*args, **kwargs)
-            # When pipelining, buffer this command into our list of
-            # pipelined commands. Otherwise, write the command immediately.
-            if self.pipelining:
-                self.pipelined_commands.append(command)
-            else:
-                self.transport.write(command)
+            self.transport.write(command)
 
             # Return deferred that will contain the result of this command.
-            # Note: when using pipelining, this deferred will NOT return
-            # until after execute_pipeline is called.
 
             # timeout: reset the timeout if there are no pending requests
             if len(self.replyQueue.waiting) == 0:
                 self.resetTimeout()
 
             r = self.replyQueue.get().addCallback(self.handle_reply)
-
-            # When pipelining, we need to keep track of the deferred replies
-            # so that we can wait for them in a DeferredList when
-            # execute_pipeline is called.
-            if self.pipelining:
-                self.pipelined_replies.append(r)
 
             if self.inMulti:
                 self.post_proc.append(kwargs.get("post_proc"))
@@ -1564,52 +1547,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self._clear_txstate()
         return self.execute_command("DISCARD")
 
-    # Returns a proxy that works just like .multi() except that commands
-    # are simply buffered to be written all at once in a pipeline.
-    # http://redis.io/topics/pipelining
-    @_blocking_command(release_on_callback=False)
-    def pipeline(self):
-
-        # Return a deferred that returns self (rather than simply self) to allow
-        # ConnectionHandler to wrap this method with async connection retrieval.
-        self.pipelining = True
-        self.pipelined_commands = []
-        self.pipelined_replies = []
-        return defer.succeed(self)
-
-    @defer.inlineCallbacks
-    def execute_pipeline(self):
-        if not self.pipelining:
-            err = "Not currently pipelining commands, " \
-                  "please use pipeline() first"
-            raise RedisError(err)
-
-        # Flush all the commands at once to redis. Wait for all replies
-        # to come back using a deferred list.
-        self.transport.write(six.b("").join(self.pipelined_commands))
-
-        d = defer.DeferredList(
-            deferredList=self.pipelined_replies,
-            fireOnOneErrback=True,
-            consumeErrors=True,
-            )
-
-        d.addBoth(self._clear_pipeline_state)
-
-        results = yield d
-
-        defer.returnValue([value for success, value in results])
-
-    def _clear_pipeline_state(self, response):
-        if self.pipelining:
-            self.pipelining = False
-            self.pipelined_commands = []
-            self.pipelined_replies = []
-            self.factory.connectionQueue.put(self)
-
-        return response
-
-    # Publish/Subscribe
     # see the SubscriberProtocol for subscribing to channels
     def publish(self, channel, message):
         """
