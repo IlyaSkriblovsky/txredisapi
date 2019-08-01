@@ -24,11 +24,9 @@
 
 import six
 
-import bisect
 import operator
 import re
 import warnings
-import zlib
 import string
 import hashlib
 import random
@@ -36,16 +34,12 @@ import random
 from twisted.internet import defer
 from twisted.internet import protocol
 from twisted.internet import reactor
-from twisted.internet.tcp import Connector
 from twisted.protocols import basic
 from twisted.protocols import policies
 from twisted.python import log
 from twisted.python.failure import Failure
 
-try:
-    import hiredis
-except ImportError:
-    hiredis = None
+import hiredis
 
 
 class RedisError(Exception):
@@ -1778,7 +1772,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         return self.execute_command("ROLE")
 
 
-class HiredisProtocol(BaseRedisProtocol):
+class RedisProtocol(BaseRedisProtocol):
     def __init__(self, *args, **kwargs):
         BaseRedisProtocol.__init__(self, *args, **kwargs)
         self._reader = hiredis.Reader(protocolError=InvalidData,
@@ -1822,67 +1816,6 @@ class HiredisProtocol(BaseRedisProtocol):
     def sscan(self, key, cursor=0, pattern=None, count=None):
         r = BaseRedisProtocol.sscan(self, key, cursor, pattern, count)
         return r.addCallback(self._convert_bin_values)
-
-if hiredis is not None:
-    RedisProtocol = HiredisProtocol
-else:
-    RedisProtocol = BaseRedisProtocol
-
-class MonitorProtocol(RedisProtocol):
-    """
-    monitor has the same behavior as subscribe: hold the connection until
-    something happens.
-
-    take care with the performance impact: http://redis.io/commands/monitor
-    """
-
-    def messageReceived(self, message):
-        pass
-
-    def replyReceived(self, reply):
-        self.messageReceived(reply)
-
-    def monitor(self):
-        return self.execute_command("MONITOR")
-
-    def stop(self):
-        self.transport.loseConnection()
-
-
-class SubscriberProtocol(RedisProtocol):
-    def messageReceived(self, pattern, channel, message):
-        pass
-
-    def replyReceived(self, reply):
-        if isinstance(reply, list):
-            if reply[-3] == u"message":
-                self.messageReceived(None, *reply[-2:])
-            elif len(reply) > 3 and reply[-4] == u"pmessage":
-                self.messageReceived(*reply[-3:])
-            else:
-                self.replyQueue.put(reply[-3:])
-        else:
-            self.replyQueue.put(reply)
-
-    def subscribe(self, channels):
-        if isinstance(channels, six.string_types):
-            channels = [channels]
-        return self.execute_command("SUBSCRIBE", *channels)
-
-    def unsubscribe(self, channels):
-        if isinstance(channels, six.string_types):
-            channels = [channels]
-        return self.execute_command("UNSUBSCRIBE", *channels)
-
-    def psubscribe(self, patterns):
-        if isinstance(patterns, six.string_types):
-            patterns = [patterns]
-        return self.execute_command("PSUBSCRIBE", *patterns)
-
-    def punsubscribe(self, patterns):
-        if isinstance(patterns, six.string_types):
-            patterns = [patterns]
-        return self.execute_command("PUNSUBSCRIBE", *patterns)
 
 
 class ConnectionHandler(object):
@@ -2180,14 +2113,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
 class SubscriberFactory(RedisFactory):
     protocol = SubscriberProtocol
-
-    def __init__(self, isLazy=False, handler=ConnectionHandler):
-        RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
-                              handler=handler)
-
-
-class MonitorFactory(RedisFactory):
-    protocol = MonitorProtocol
 
     def __init__(self, isLazy=False, handler=ConnectionHandler):
         RedisFactory.__init__(self, None, None, 1, isLazy=isLazy,
