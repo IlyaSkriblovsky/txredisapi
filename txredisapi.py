@@ -543,7 +543,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             self.transport.write(command)
 
             # Return deferred that will contain the result of this command.
-
             # timeout: reset the timeout if there are no pending requests
             if len(self.replyQueue.waiting) == 0:
                 self.resetTimeout()
@@ -1719,25 +1718,31 @@ class PeekableQueue(defer.DeferredQueue):
     """
     def __init__(self, *args, **kwargs):
         defer.DeferredQueue.__init__(self, *args, **kwargs)
-
         self.peekers = []
 
     def peek(self):
         if self.pending:
             return defer.succeed(random.choice(self.pending))
         else:
-            d = defer.Deferred()
+            def _cancel(d):
+                self.peekers.remove(d)
+
+            d = defer.Deferred(canceller=_cancel)
             self.peekers.append(d)
             return d
 
     def remove(self, item):
         self.pending.remove(item)
 
-    def put(self, obj):
-        for d in self.peekers:
-            d.callback(obj)
-        self.peekers = []
+    def put_for_pending_peekers(self, obj):
+        peekers = self.peekers[:]
+        self.peekers[:] = []
 
+        for d in peekers:
+            d.callback(obj)
+
+    def put(self, obj):
+        self.put_for_pending_peekers(obj)
         defer.DeferredQueue.put(self, obj)
 
 
@@ -1769,7 +1774,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.idx = 0
         self.size = 0
         self.pool = []
-        self.deferred = defer.Deferred()
+        self.deferred = None if isLazy else defer.Deferred()
         self.handler = handler(self)
         self.connectionQueue = PeekableQueue()
         self._waitingForEmptyPool = set()
@@ -1788,7 +1793,6 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             'continueTrying': str(self.continueTrying),
         }
 
-
     def buildProtocol(self, addr):
         if hasattr(self, 'charset'):
             p = self.protocol(self.charset, replyTimeout = self.replyTimeout, logger = self.logger)
@@ -1805,10 +1809,12 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.connectionQueue.put(conn)
         self.pool.append(conn)
         self.size = len(self.pool)
-        if self.deferred:
+
+        if self.deferred is not None:
             if self.size == self.poolsize:
-                self.deferred.callback(self.handler)
+                d = self.deferred
                 self.deferred = None
+                d.callback(self.handler)
 
     def delConnection(self, conn):
         if self.logger is not None:
@@ -1859,12 +1865,16 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         if self.logger is not None:
             self.logger.warning('connectionError', why = why)
 
-        if self.deferred:
-            self.deferred.errback(ValueError(why))
+        if self.deferred is not None:
+            d = self.deferred
             self.deferred = None
+            d.errback(ValueError(why))
 
     # there must be a better way to unblock requests waiting on connectionQueue
     def _errback_connection_queue(self, err):
+        if len(self.connectionQueue.waiting) == 0:
+            self.connectionQueue.put_for_pending_peekers(err)
+
         for i in range(len(self.connectionQueue.waiting)):
             self.connectionQueue.put(err)
 
@@ -1880,7 +1890,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                 conn = yield self.connectionQueue.get()
 
             if isinstance(conn, Failure):
-                conn.raieException()
+                conn.raiseException()
 
             if conn.connected == 0:
                 log.msg('Discarding dead connection.')
@@ -1905,15 +1915,17 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     def clientConnectionFailed(self, connector, reason):
         if self.logger is not None:
             self.logger.warning('clientConnectionFailed', reason = str(reason))
+
         self._delConnector(connector)
         protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
 
         if not self._will_retry_connection():
             self._errback_connection_queue(reason)
 
-            if self.deferred != None:
-                self.deferred.errback(reason)
+            if self.deferred is not None:
+                d = self.deferred
                 self.deferred = None
+                d.errback(reason)
 
     def startedConnecting(self, connector):
         self._addConnector(connector)
@@ -1921,14 +1933,17 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     def clientConnectionLost(self, connector, reason):
         if self.logger is not None:
             self.logger.warning('clientConnectionLost', reason = str(reason))
+
         self._delConnector(connector)
         protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
+
         if not self._will_retry_connection():
             self._errback_connection_queue(reason)
 
-            if self.deferred:
-                self.deferred.errback(reason)
+            if self.deferred is not None:
+                d = self.deferred
                 self.deferred = None
+                d.errback(reason)
 
     def _addConnector(self, connector):
         self.connectors.add(connector)
@@ -1949,6 +1964,7 @@ def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
     factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler,
                            charset, password, replyTimeout, convertNumbers, logger)
     factory.continueTrying = reconnect
+
     for x in range(poolsize):
         reactor.connectTCP(host, port, factory, connectTimeout)
 

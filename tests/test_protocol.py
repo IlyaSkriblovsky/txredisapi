@@ -23,13 +23,15 @@ from twisted.internet.protocol import ClientFactory
 from twisted.test.proto_helpers import StringTransportWithDisconnection
 from twisted.internet import task
 
+
 class MockFactory(ClientFactory):
     pass
 
+
 class MockLogger(object):
     def warning(self, *args, **kwargs):
-        print(args, kwargs)
         pass
+
 
 class LineReceiverSubclass(redis.LineReceiver):
     def lineReceived(self, line):
@@ -100,6 +102,7 @@ class TestBaseRedisProtocol(unittest.TestCase):
         s = self._protocol._build_command("PING")
         self.assertEqual(s, six.b('*1\r\n$4\r\nPING\r\n'))
 
+
 class TestTimeout(unittest.TestCase):
     def test_connect_timeout(self):
         c = redis.Connection(host = "10.255.255.1",
@@ -108,11 +111,11 @@ class TestTimeout(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_lazy_connect_timeout(self):
-        c = redis.lazyConnection(host = "10.255.255.1",
-            port = 8000, reconnect = True, connectTimeout = 1.0, replyTimeout = 10.0)
-        c._factory.maxRetries = 1
+        c = redis.lazyConnection(host='10.255.255.1',
+            port=8000, reconnect=True, connectTimeout=0.0, replyTimeout=10.0)
+        c._factory.maxRetries = 0
         p = c.ping()
-        # this does seem to take a bit too long
+
         yield self.assertFailure(p, error.TimeoutError)
         yield c.disconnect()
 
@@ -151,7 +154,7 @@ class TestTimeout(unittest.TestCase):
         factory = protocol.ServerFactory()
         factory.buildProtocol = lambda addr: capture_mocker(delay=2)
         handler = reactor.listenTCP(8000, factory)
-        c = yield redis.Connection(host="localhost", port=8000, reconnect=False, replyTimeout=3, logger=MockLogger())
+        c = yield redis.Connection(host="localhost", port=8000, reconnect=False, replyTimeout=3)
 
         # first ping should succeed, since 2 < 3
         yield self._delay(2)
@@ -191,7 +194,7 @@ class TestTimeout(unittest.TestCase):
         factory = protocol.ServerFactory()
         factory.buildProtocol = lambda addr: capture_mocker(delay=2)
         handler = reactor.listenTCP(8001, factory)
-        c = yield redis.Connection(host="localhost", port=8001, reconnect=True, replyTimeout=3, logger=MockLogger())
+        c = yield redis.Connection(host="localhost", port=8001, reconnect=True, replyTimeout=3)
 
         # pause the server
         for m in mockers:
