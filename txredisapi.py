@@ -604,9 +604,10 @@ class BaseRedisProtocol(LineReceiver):
                 delayed_call = None
 
                 def fire_timeout():
-                    result.errback(TimeoutError(
-                        'Not received Redis response in {0} seconds'.format(self.replyTimeout)
-                    ))
+                    error_text = 'Not received Redis response in {0} seconds'.format(self.replyTimeout)
+                    result.errback(TimeoutError(error_text))
+                    while self.replyQueue.waiting:
+                        self.replyQueue.put(TimeoutError(error_text))
                     self.transport.abortConnection()
 
                 def cancel_timeout(value):
