@@ -1,11 +1,21 @@
 # Changelog
 
-## Release 1.4.6 (2017-12-27)
+## Release 1.4.6 (2019-11-20)
 
 ### Bugfixes
 
 - Fixed authentication with Sentinel
 
+- replyTimeout connection argument fixed. All query methods except `blpop()`,
+  `brpop()`, `brpoplpush()` now raise `TimeoutError` if reply wasn't received
+  within `replyTimeout` seconds.
+
+- allow any commands to be sent via SubscriberProtocol
+
+- Fixed bug in handling responses from Redis when MULTI is issued right after
+  another bulk command (SMEMBERS for example)
+
+---
 
 ## Release 1.4.5 (2017-11-08)
 
