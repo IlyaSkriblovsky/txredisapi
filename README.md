@@ -654,6 +654,10 @@ Credits
 =======
 Thanks to (in no particular order):
 
+- Alexandre Fiori
+
+  - Author of txredisapi
+
 - Gleicon Moraes
 
   - Bug fixes, testing, and [RestMQ](http://github.com/gleicon/restmq>).
