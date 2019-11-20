@@ -4,6 +4,10 @@
 
 ### Bugfixes
 
+- replyTimeout connection argument fixed. All query methods except `blpop()`,
+  `brpop()`, `brpoplpush()` now raise `TimeoutError` if reply wasn't received
+  within `replyTimeout` seconds.
+
 - allow any commands to be sent via SubscriberProtocol
 
 ---
