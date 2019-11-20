@@ -1,8 +1,10 @@
 # Changelog
 
-## Release 1.4.6 (UNRELEASED)
+## Release 1.4.6 (2019-11-20)
 
 ### Bugfixes
+
+- Fixed authentication with Sentinel
 
 - replyTimeout connection argument fixed. All query methods except `blpop()`,
   `brpop()`, `brpoplpush()` now raise `TimeoutError` if reply wasn't received
