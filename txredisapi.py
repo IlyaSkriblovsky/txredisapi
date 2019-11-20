@@ -261,6 +261,7 @@ class BaseRedisProtocol(LineReceiver):
         self.replyQueue = ReplyQueue()
 
         self.transactions = 0
+        self.pendingTransaction = False
         self.inTransaction = False
         self.inMulti = False
         self.unwatch_cc = lambda: ()
@@ -1521,14 +1522,16 @@ class BaseRedisProtocol(LineReceiver):
 
     def _clear_txstate(self):
         if self.inTransaction:
+            self.pendingTransaction = False
             self.inTransaction = False
             self.inMulti = False
             self.factory.connectionQueue.put(self)
 
     @_blocking_command(release_on_callback=False)
     def watch(self, keys):
-        if not self.inTransaction:
-            self.inTransaction = True
+        if not self.pendingTransaction:
+            self.pendingTransaction = True
+            self.inTransaction = False
             self.inMulti = False
             self.unwatch_cc = self._clear_txstate
             self.commit_cc = lambda: ()
@@ -1548,7 +1551,8 @@ class BaseRedisProtocol(LineReceiver):
     # must be executed.
     @_blocking_command(release_on_callback=False)
     def multi(self, keys=None):
-        self.inTransaction = True
+        self.pendingTransaction = True
+        self.inTransaction = False
         self.inMulti = True
         self.unwatch_cc = lambda: ()
         self.commit_cc = self._clear_txstate
@@ -1563,6 +1567,7 @@ class BaseRedisProtocol(LineReceiver):
     def _tx_started(self, response):
         if response != 'OK':
             raise RedisError('Invalid response: %s' % response)
+        self.inTransaction = True
         return self
 
     def _commit_check(self, response):
