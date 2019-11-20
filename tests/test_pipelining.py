@@ -25,7 +25,7 @@ import txredisapi
 
 from tests.mixins import REDIS_HOST, REDIS_PORT
 
-log.startLogging(sys.stdout)
+# log.startLogging(sys.stdout)
 
 
 class InspectableTransport(object):
