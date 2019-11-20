@@ -1909,11 +1909,12 @@ class SubscriberProtocol(RedisProtocol):
 
     def replyReceived(self, reply):
         if isinstance(reply, list):
-            if reply[-3] == u"message":
+            reply_len = len(reply)
+            if reply_len >= 3 and reply[-3] == u"message":
                 self.messageReceived(None, *reply[-2:])
-            elif len(reply) > 3 and reply[-4] == u"pmessage":
+            elif reply_len >= 4 and reply[-4] == u"pmessage":
                 self.messageReceived(*reply[-3:])
-            elif reply[-3] in self._sub_unsub_reponses and len(self.replyQueue.waiting) == 0:
+            elif reply_len >= 3 and reply[-3] in self._sub_unsub_reponses and len(self.replyQueue.waiting) == 0:
                 pass
             else:
                 self.replyQueue.put(reply[-3:])

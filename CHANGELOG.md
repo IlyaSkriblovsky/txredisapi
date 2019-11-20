@@ -8,6 +8,8 @@
   `brpop()`, `brpoplpush()` now raise `TimeoutError` if reply wasn't received
   within `replyTimeout` seconds.
 
+- allow any commands to be sent via SubscriberProtocol
+
 ---
 
 ## Release 1.4.5 (2017-11-08)
