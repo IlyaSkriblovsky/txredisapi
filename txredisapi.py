@@ -82,6 +82,10 @@ class WatchError(RedisError):
     pass
 
 
+class TimeoutError(ConnectionError):
+    pass
+
+
 def list_or_args(command, keys, args):
     oldapi = bool(args)
     try:
@@ -238,12 +242,13 @@ def _blocking_command(release_on_callback):
     return decorator
 
 
-class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
+class BaseRedisProtocol(LineReceiver):
     """
     Redis client protocol.
     """
 
-    def __init__(self, charset="utf-8", errors="strict"):
+    def __init__(self, charset="utf-8", errors="strict", replyTimeout=None,
+                 password=None, dbid=None, convertNumbers=True):
         self.charset = charset
         self.errors = errors
 
@@ -268,11 +273,32 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         self.pipelined_commands = []
         self.pipelined_replies = []
 
+        self.replyTimeout = replyTimeout
+        self.password = password
+        self.dbid = dbid
+        self.convertNumbers = convertNumbers
+
+        self._waiting_for_connect = []
+        self._waiting_for_disconnect = []
+
+
+    def whenConnected(self):
+        d = defer.Deferred()
+        self._waiting_for_connect.append(d)
+        return d
+
+
+    def whenDisconnected(self):
+        d = defer.Deferred()
+        self._waiting_for_disconnect.append(d)
+        return d
+
+
     @defer.inlineCallbacks
     def connectionMade(self):
-        if self.factory.password is not None:
+        if self.password is not None:
             try:
-                response = yield self.auth(self.factory.password)
+                response = yield self.auth(self.password)
                 if isinstance(response, ResponseError):
                     raise response
             except Exception as e:
@@ -285,9 +311,9 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                     log.msg(msg)
                 defer.returnValue(None)
 
-        if self.factory.dbid is not None:
+        if self.dbid is not None:
             try:
-                response = yield self.select(self.factory.dbid)
+                response = yield self.select(self.dbid)
                 if isinstance(response, ResponseError):
                     raise response
             except Exception as e:
@@ -295,19 +321,25 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 self.transport.loseConnection()
 
                 msg = "Redis error: could not set dbid=%s: %s" % \
-                      (self.factory.dbid, str(e))
+                      (self.dbid, str(e))
                 self.factory.connectionError(msg)
                 if self.factory.isLazy:
                     log.msg(msg)
                 defer.returnValue(None)
 
         self.connected = 1
-        self.factory.addConnection(self)
+        self._waiting_for_connect, dfrs = [], self._waiting_for_connect
+        for d in dfrs:
+            d.callback(self)
 
     def connectionLost(self, why):
         self.connected = 0
         self.script_hashes.clear()
-        self.factory.delConnection(self)
+
+        self._waiting_for_disconnect, dfrs = [], self._waiting_for_disconnect
+        for d in dfrs:
+            d.callback(self)
+
         LineReceiver.connectionLost(self, why)
         while self.replyQueue.waiting:
             self.replyReceived(ConnectionError("Lost connection"))
@@ -322,7 +354,6 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
           "*" multi-bulk data
         """
         if line:
-            self.resetTimeout()
             token, data = line[0], line[1:]
         else:
             return
@@ -420,7 +451,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         if isinstance(data, list):
             return [self.tryConvertData(x) for x in data]
         el = None
-        if self.factory.convertNumbers:
+        if self.convertNumbers:
             if data:
                 num_data = data
                 try:
@@ -558,13 +589,41 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             # Return deferred that will contain the result of this command.
             # Note: when using pipelining, this deferred will NOT return
             # until after execute_pipeline is called.
-            r = self.replyQueue.get().addCallback(self.handle_reply)
+
+            result = defer.Deferred()
+
+            def fire_result(value):
+                if result.called:
+                    return
+                result.callback(value)
+
+            response = self.replyQueue.get().addCallback(self.handle_reply)
+            response.addBoth(fire_result)
+
+            apply_timeout = kwargs.get('apply_timeout', True)
+            if self.replyTimeout and apply_timeout:
+                delayed_call = None
+
+                def fire_timeout():
+                    error_text = 'Not received Redis response in {0} seconds'.format(self.replyTimeout)
+                    result.errback(TimeoutError(error_text))
+                    while self.replyQueue.waiting:
+                        self.replyQueue.put(TimeoutError(error_text))
+                    self.transport.abortConnection()
+
+                def cancel_timeout(value):
+                    if delayed_call.active():
+                        delayed_call.cancel()
+                    return value
+
+                delayed_call = self.callLater(self.replyTimeout, fire_timeout)
+                result.addBoth(cancel_timeout)
 
             # When pipelining, we need to keep track of the deferred replies
             # so that we can wait for them in a DeferredList when
             # execute_pipeline is called.
             if self.pipelining:
-                self.pipelined_replies.append(r)
+                self.pipelined_replies.append(result)
 
             if self.inMulti:
                 self.post_proc.append(kwargs.get("post_proc"))
@@ -572,8 +631,8 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
                 if "post_proc" in kwargs:
                     f = kwargs["post_proc"]
                     if callable(f):
-                        r.addCallback(f)
-            return r
+                        result.addCallback(f)
+            return result
 
     ##
     # REDIS COMMANDS
@@ -975,7 +1034,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             keys = list(keys)
 
         keys.append(timeout)
-        return self.execute_command("BLPOP", *keys)
+        return self.execute_command("BLPOP", *keys, apply_timeout=False)
 
     @_blocking_command(release_on_callback=True)
     def brpop(self, keys, timeout=0):
@@ -988,7 +1047,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
             keys = list(keys)
 
         keys.append(timeout)
-        return self.execute_command("BRPOP", *keys)
+        return self.execute_command("BRPOP", *keys, apply_timeout=False)
 
     @_blocking_command(release_on_callback=True)
     def brpoplpush(self, source, destination, timeout=0):
@@ -996,7 +1055,7 @@ class BaseRedisProtocol(LineReceiver, policies.TimeoutMixin):
         Pop a value from a list, push it to another list and return
         it; or block until one is available.
         """
-        return self.execute_command("BRPOPLPUSH", source, destination, timeout)
+        return self.execute_command("BRPOPLPUSH", source, destination, timeout, apply_timeout=False)
 
     def rpoplpush(self, srckey, dstkey):
         """
@@ -1784,7 +1843,6 @@ class HiredisProtocol(BaseRedisProtocol):
                                       replyError=ResponseError)
 
     def dataReceived(self, data, unpause=False):
-        self.resetTimeout()
         if data:
             self._reader.feed(data)
         res = self._reader.gets()
@@ -1842,7 +1900,7 @@ class MonitorProtocol(RedisProtocol):
         self.messageReceived(reply)
 
     def monitor(self):
-        return self.execute_command("MONITOR")
+        return self.execute_command("MONITOR", apply_timeout=False)
 
     def stop(self):
         self.transport.loseConnection()
@@ -1856,11 +1914,12 @@ class SubscriberProtocol(RedisProtocol):
 
     def replyReceived(self, reply):
         if isinstance(reply, list):
-            if reply[-3] == u"message":
+            reply_len = len(reply)
+            if reply_len >= 3 and reply[-3] == u"message":
                 self.messageReceived(None, *reply[-2:])
-            elif len(reply) > 3 and reply[-4] == u"pmessage":
+            elif reply_len >= 4 and reply[-4] == u"pmessage":
                 self.messageReceived(*reply[-3:])
-            elif reply[-3] in self._sub_unsub_reponses and len(self.replyQueue.waiting) == 0:
+            elif reply_len >= 3 and reply[-3] in self._sub_unsub_reponses and len(self.replyQueue.waiting) == 0:
                 pass
             else:
                 self.replyQueue.put(reply[-3:])
@@ -1870,7 +1929,7 @@ class SubscriberProtocol(RedisProtocol):
     def subscribe(self, channels):
         if isinstance(channels, six.string_types):
             channels = [channels]
-        return self.execute_command("SUBSCRIBE", *channels)
+        return self.execute_command("SUBSCRIBE", *channels, apply_timeout=False)
 
     def unsubscribe(self, channels):
         if isinstance(channels, six.string_types):
@@ -1880,7 +1939,7 @@ class SubscriberProtocol(RedisProtocol):
     def psubscribe(self, patterns):
         if isinstance(patterns, six.string_types):
             patterns = [patterns]
-        return self.execute_command("PSUBSCRIBE", *patterns)
+        return self.execute_command("PSUBSCRIBE", *patterns, apply_timeout=False)
 
     def punsubscribe(self, patterns):
         if isinstance(patterns, six.string_types):
@@ -2201,6 +2260,8 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     maxDelay = 10
     protocol = RedisProtocol
 
+    noisy = False
+
     def __init__(self, uuid, dbid, poolsize, isLazy=False,
                  handler=ConnectionHandler, charset="utf-8", password=None,
                  replyTimeout=None, convertNumbers=True):
@@ -2231,12 +2292,11 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.disconnectCalled = False
 
     def buildProtocol(self, addr):
-        if hasattr(self, 'charset'):
-            p = self.protocol(self.charset)
-        else:
-            p = self.protocol()
+        p = self.protocol(self.charset, replyTimeout=self.replyTimeout,
+                          password=self.password, dbid=self.dbid,
+                          convertNumbers=self.convertNumbers)
         p.factory = self
-        p.timeOut = self.replyTimeout
+        p.whenConnected().addCallback(self.addConnection)
         return p
 
     def addConnection(self, conn):
@@ -2244,6 +2304,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
             conn.transport.loseConnection()
             return
 
+        conn.whenDisconnected().addCallback(self.delConnection)
         self.connectionQueue.put(conn)
         self.pool.append(conn)
         self.size = len(self.pool)
@@ -2554,8 +2615,8 @@ class SentinelRedisProtocol(RedisProtocol):
                 RedisProtocol.connectionMade(self)
                 self.factory.resetDelay()
 
-        if self.factory.password is not None:
-            self.auth(self.factory.password)
+        if self.password is not None:
+            self.auth(self.password)
 
         return self.role().addCallback(check_role)
 
