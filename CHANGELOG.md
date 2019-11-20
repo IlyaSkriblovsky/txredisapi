@@ -10,6 +10,9 @@
 
 - allow any commands to be sent via SubscriberProtocol
 
+- Fixed bug in handling responses from Redis when MULTI is issued right after
+  another bulk command (SMEMBERS for example)
+
 ---
 
 ## Release 1.4.5 (2017-11-08)
