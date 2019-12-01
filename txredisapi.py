@@ -2611,9 +2611,11 @@ class SentinelRedisProtocol(RedisProtocol):
         def check_role(role):
             if self.factory.is_master and role[0] != "master":
                 self.transport.loseConnection()
+                return defer.fail(RedisError('not master'))
             else:
-                RedisProtocol.connectionMade(self)
-                self.factory.resetDelay()
+                return RedisProtocol.connectionMade(self).addCallback(
+                    lambda _: self.factory.resetDelay()
+                )
 
         if self.password is not None:
             self.auth(self.password)
