@@ -2613,9 +2613,8 @@ class SentinelRedisProtocol(RedisProtocol):
                 self.transport.loseConnection()
                 return defer.succeed(None)
             else:
-                return RedisProtocol.connectionMade(self).addCallback(
-                    lambda _: self.factory.resetDelay()
-                )
+                self.factory.resetDelay()
+                return RedisProtocol.connectionMade(self)
 
         if self.password is not None:
             self.auth(self.password)
