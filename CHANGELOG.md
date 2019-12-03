@@ -1,5 +1,14 @@
 # Changelog
 
+## Release 1.4.7 (2019-12-03)
+
+### Bugfixes
+
+- SentinelRedisProtocol.connectionMade not returns Deferred so subclasses might
+  schedule interaction when connection is ready
+
+---
+
 ## Release 1.4.6 (2019-11-20)
 
 ### Bugfixes
