@@ -1,10 +1,10 @@
 txredisapi
 ==========
 
-[![Build Status](https://secure.travis-ci.org/fiorix/txredisapi.png)](http://travis-ci.org/fiorix/txredisapi)
+[![Build Status](https://secure.travis-ci.org/IlyaSkriblovsky/txredisapi.png)](http://travis-ci.org/IlyaSkriblovsky/txredisapi)
 
 
-*For the latest source code, see <http://github.com/fiorix/txredisapi>*
+*For the latest source code, see <http://github.com/IlyaSkriblovsky/txredisapi>*
 
 
 ``txredisapi`` is a non-blocking client driver for the [redis](http://redis.io)
@@ -48,7 +48,7 @@ Bear in mind that ``txredisapi.py`` is pure-python, in a single file.
 Thus, there's absolutely no need to install it. Instead, just copy it to your
 project directory and start using.
 
-Latest source code is at <https://github.com/fiorix/txredisapi>.
+Latest source code is at <https://github.com/IlyaSkriblovsky/txredisapi>.
 
 If you have [cyclone](http://cyclone.io), you probably already have it too.
 Try the following:
