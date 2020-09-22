@@ -2794,15 +2794,15 @@ class Sentinel(object):
 
 
 __all__ = [
-    Connection, lazyConnection,
-    ConnectionPool, lazyConnectionPool,
-    ShardedConnection, lazyShardedConnection,
-    ShardedConnectionPool, lazyShardedConnectionPool,
-    UnixConnection, lazyUnixConnection,
-    UnixConnectionPool, lazyUnixConnectionPool,
-    ShardedUnixConnection, lazyShardedUnixConnection,
-    ShardedUnixConnectionPool, lazyShardedUnixConnectionPool,
-    Sentinel, MasterNotFoundError
+    "Connection", "lazyConnection",
+    "ConnectionPool", "lazyConnectionPool",
+    "ShardedConnection", "lazyShardedConnection",
+    "ShardedConnectionPool", "lazyShardedConnectionPool",
+    "UnixConnection", "lazyUnixConnection",
+    "UnixConnectionPool", "lazyUnixConnectionPool",
+    "ShardedUnixConnection", "lazyShardedUnixConnection",
+    "ShardedUnixConnectionPool", "lazyShardedUnixConnectionPool",
+    "Sentinel", "MasterNotFoundError"
 ]
 
 __author__ = "Alexandre Fiori"
