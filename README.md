@@ -154,7 +154,7 @@ The arguments are:
 - hosts (for sharded): list of ``host:port`` pairs. [default: None]
 - paths (for sharded): list of ``pathnames``. [default: None]
 - password: password for the redis server. [default: None]
-- ssl: boolean indicating wether to use SSL/TLS. [default: False]
+- use_ssl: boolean indicating wether to use SSL/TLS. [default: False]
 
 
 ### Connection Handlers ###
