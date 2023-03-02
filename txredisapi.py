@@ -2388,7 +2388,7 @@ def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
                            charset, password, replyTimeout, convertNumbers)
     factory.continueTrying = reconnect
     for x in range(poolsize):
-        if isinstance(ssl_context_factory, bool) and ssl_context_factory is True:
+        if ssl_context_factory is True:
             ssl_context_factory = ssl.ClientContextFactory()
         if ssl_context_factory:
             reactor.connectSSL(host, port, factory, ssl_context_factory, connectTimeout)
