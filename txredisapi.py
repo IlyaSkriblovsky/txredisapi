@@ -2812,4 +2812,4 @@ __all__ = [
 ]
 
 __author__ = "Alexandre Fiori"
-__version__ = version = "1.4.8"
+__version__ = version = "1.4.9"

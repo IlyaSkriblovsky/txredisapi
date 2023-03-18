@@ -15,11 +15,15 @@
 # limitations under the License.
 
 import setuptools
+from pathlib import Path
+
+this_directory = Path(__file__).parent
+long_description = (this_directory / "README.md").read_text()
 
 
 setuptools.setup(
     name="txredisapi",
-    version="1.4.8",
+    version="1.4.9",
     py_modules=["txredisapi"],
     install_requires=["twisted", "six"],
     author="Alexandre Fiori",
@@ -27,6 +31,8 @@ setuptools.setup(
     url="http://github.com/IlyaSkriblovsky/txredisapi",
     license="http://www.apache.org/licenses/LICENSE-2.0",
     description="non-blocking redis client for python",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
