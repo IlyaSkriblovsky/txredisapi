@@ -14,17 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 import setuptools
 
-py_version = sys.version_info[:2]
-twisted_version = py_version == (2, 6) and 'twisted<15.5' or 'twisted'
 
 setuptools.setup(
     name="txredisapi",
-    version="1.4.7",
+    version="1.4.8",
     py_modules=["txredisapi"],
-    install_requires=[twisted_version, "six"],
+    install_requires=["twisted", "six"],
     author="Alexandre Fiori",
     author_email="fiorix@gmail.com",
     url="http://github.com/IlyaSkriblovsky/txredisapi",
@@ -40,6 +37,10 @@ setuptools.setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: Implementation :: PyPy',
     ],
 )

@@ -1,5 +1,13 @@
 # Changelog
 
+## Release 1.4.8 (2023-03-18)
+
+### Features
+
+- SSL connection support
+
+---
+
 ## Release 1.4.7 (2019-12-03)
 
 ### Bugfixes
