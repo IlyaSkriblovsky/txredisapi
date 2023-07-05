@@ -1908,7 +1908,8 @@ class MonitorProtocol(RedisProtocol):
 
 
 class SubscriberProtocol(RedisProtocol):
-    _sub_unsub_reponses = set([u"subscribe", u"unsubscribe", u"psubscribe", u"punsubscribe"])
+    _sub_unsub_reponses = set([u"subscribe", u"unsubscribe", u"psubscribe", u"punsubscribe",
+                               b"subscribe", b"unsubscribe", b"psubscribe", b"punsubscribe"])
 
     def messageReceived(self, pattern, channel, message):
         pass
