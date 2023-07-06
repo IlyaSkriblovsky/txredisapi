@@ -1,5 +1,13 @@
 # Changelog
 
+## Release 1.4.10 (2023-07-06)
+
+### Bugfixes
+
+- Fix SubscriberProtocol to work with charset=None (#150)
+
+---
+
 ## Release 1.4.9 (2023-03-18)
 
 ### Features
