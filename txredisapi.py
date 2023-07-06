@@ -1908,7 +1908,8 @@ class MonitorProtocol(RedisProtocol):
 
 
 class SubscriberProtocol(RedisProtocol):
-    _sub_unsub_reponses = set([u"subscribe", u"unsubscribe", u"psubscribe", u"punsubscribe"])
+    _sub_unsub_reponses = set([u"subscribe", u"unsubscribe", u"psubscribe", u"punsubscribe",
+                               b"subscribe", b"unsubscribe", b"psubscribe", b"punsubscribe"])
 
     def messageReceived(self, pattern, channel, message):
         pass
@@ -1916,9 +1917,9 @@ class SubscriberProtocol(RedisProtocol):
     def replyReceived(self, reply):
         if isinstance(reply, list):
             reply_len = len(reply)
-            if reply_len >= 3 and reply[-3] == u"message":
+            if reply_len >= 3 and reply[-3] in (u"message", b"message"):
                 self.messageReceived(None, *reply[-2:])
-            elif reply_len >= 4 and reply[-4] == u"pmessage":
+            elif reply_len >= 4 and reply[-4] in (u"pmessage", b"pmessage"):
                 self.messageReceived(*reply[-3:])
             elif reply_len >= 3 and reply[-3] in self._sub_unsub_reponses and len(self.replyQueue.waiting) == 0:
                 pass
