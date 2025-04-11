@@ -2362,7 +2362,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                 if peek:
                     self.connectionQueue.remove(conn)
             else:
-                defer.returnValue(conn)
+                return conn
 
 
 class SubscriberFactory(RedisFactory):
