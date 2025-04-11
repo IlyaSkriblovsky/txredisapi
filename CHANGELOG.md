@@ -1,5 +1,13 @@
 # Changelog
 
+## Release 1.4.11 (2025-04-11)
+
+### Bugfixes
+
+- defer.returnValue() replaced with return to fix warnings when used with newer Twisted versions
+
+---
+
 ## Release 1.4.10 (2023-07-06)
 
 ### Bugfixes
