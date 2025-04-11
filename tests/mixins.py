@@ -32,23 +32,23 @@ class RedisVersionCheckMixin(object):
     def checkVersion(self, major, minor, patch=0):
         d = yield self.db.info("server")
         if u'redis_version' not in d:
-            defer.returnValue(False)
+            return False
         ver = d[u'redis_version']
         self.redis_version = ver
         ver_list = [int(x) for x in ver.split(u'.')]
         if len(ver_list) < 2:
-            defer.returnValue(False)
+            return False
         if len(ver_list) == 2:
             ver_list.append(0)
         if ver_list[0] > major:
-            defer.returnValue(True)
+            return True
         elif ver_list[0] == major:
             if ver_list[1] > minor:
-                defer.returnValue(True)
+                return True
             elif ver_list[1] == minor:
                 if ver_list[2] >= patch:
-                    defer.returnValue(True)
-        defer.returnValue(False)
+                    return True
+        return False
 
 
 class Redis26CheckMixin(RedisVersionCheckMixin):

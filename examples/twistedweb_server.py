@@ -85,12 +85,12 @@ class XmlrpcHandler(BaseHandler, xmlrpc.XMLRPC):
     @defer.inlineCallbacks
     def xmlrpc_get(self, key):
         value = yield self.db.get(key)
-        defer.returnValue(value)
+        return value
 
     @defer.inlineCallbacks
     def xmlrpc_set(self, key, value):
         result = yield self.db.set(key, value)
-        defer.returnValue(result)
+        return result
 
 
 # redis connection
