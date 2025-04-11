@@ -310,7 +310,7 @@ class BaseRedisProtocol(LineReceiver):
                 self.factory.connectionError(msg)
                 if self.factory.isLazy:
                     log.msg(msg)
-                defer.returnValue(None)
+                return None
 
         if self.dbid is not None:
             try:
@@ -326,7 +326,7 @@ class BaseRedisProtocol(LineReceiver):
                 self.factory.connectionError(msg)
                 if self.factory.isLazy:
                     log.msg(msg)
-                defer.returnValue(None)
+                return None
 
         self.connected = 1
         self._waiting_for_connect, dfrs = [], self._waiting_for_connect
@@ -1626,7 +1626,7 @@ class BaseRedisProtocol(LineReceiver):
 
         results = yield d
 
-        defer.returnValue([value for success, value in results])
+        return [value for success, value in results]
 
     def _clear_pipeline_state(self, response):
         if self.pipelining:
@@ -2150,7 +2150,7 @@ class ShardedConnectionHandler(object):
 
         for conn in self._ring.nodes:
             yield conn.disconnect()
-        defer.returnValue(True)
+        return True
 
     def _wrap(self, method, *args, **kwargs):
         try:
@@ -2200,7 +2200,7 @@ class ShardedConnectionHandler(object):
             if success:
                 result += values
 
-        defer.returnValue(result)
+        return result
 
     def __repr__(self):
         nodes = []
