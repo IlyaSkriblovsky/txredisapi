@@ -1,0 +1,2 @@
+include tests/__init__.py
+include tests/mixins.py
