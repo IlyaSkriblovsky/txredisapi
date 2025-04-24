@@ -1,10 +1,15 @@
 import six
-from mock import Mock
+import sys
 from twisted.internet import defer, reactor
 from twisted.internet.protocol import Factory
 from twisted.trial.unittest import TestCase
 
 from txredisapi import BaseRedisProtocol, Sentinel, MasterNotFoundError
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import Mock
+else:
+    from mock import Mock
 
 
 class FakeRedisProtocol(BaseRedisProtocol):
