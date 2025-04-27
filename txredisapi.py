@@ -1563,7 +1563,13 @@ class BaseRedisProtocol(LineReceiver):
         else:
             d = self.execute_command("MULTI")
         d.addCallback(self._tx_started)
+        d.addErrback(self._multi_errback)
         return d
+
+    def _multi_errback(self, err):
+        self.post_proc = []
+        self.inTransaction = False
+        raise err
 
     def _tx_started(self, response):
         if response != 'OK':
