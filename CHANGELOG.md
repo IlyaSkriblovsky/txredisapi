@@ -1,5 +1,26 @@
 # Changelog
 
+## Release 1.4.12 (2026-04-??)
+
+### Features
+
+- Add `username` parameter to all connection functions for Redis 6+ ACL
+  authentication (`AUTH username password`)
+
+### Bugfixes
+
+- Fix `RedisFactory.buildProtocol` not passing `username` to the protocol
+  constructor, causing username-based auth to be silently ignored
+
+### Documentation
+
+- Correct connection function signatures in README (previously omitted
+  `ssl_context_factory`, `connectTimeout`, `replyTimeout`, `convertNumbers`)
+- Add strong recommendation to use keyword arguments due to the number of
+  parameters and risk of silent misconfiguration with positional usage
+- Fix test invocation command (`python -m twisted.trial tests`)
+
+---
 ## Release 1.4.11 (2025-04-11)
 
 ### Bugfixes
