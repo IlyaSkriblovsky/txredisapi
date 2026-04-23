@@ -178,6 +178,7 @@ class TestScripting(unittest.TestCase, Redis26CheckMixin):
         inf_loop = "while 1 do end"
         self.db1 = yield redis.Connection(REDIS_HOST, REDIS_PORT,
                                           reconnect=False)
+        yield self.db1.get('x')  # to make connection actually connect
         eval_deferred = self.db1.eval(inf_loop)
         reactor.iterate()
         r = yield self.db.script_kill()
