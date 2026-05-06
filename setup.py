@@ -23,7 +23,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setuptools.setup(
     name="txredisapi",
-    version="1.4.11",
+    version="1.4.12",
     py_modules=["txredisapi"],
     install_requires=["twisted", "six"],
     author="Alexandre Fiori",

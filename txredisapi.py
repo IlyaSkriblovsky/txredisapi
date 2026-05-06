@@ -249,7 +249,7 @@ class BaseRedisProtocol(LineReceiver):
     """
 
     def __init__(self, charset="utf-8", errors="strict", replyTimeout=None,
-                 password=None, dbid=None, convertNumbers=True):
+                 password=None, dbid=None, convertNumbers=True, username=None):
         self.charset = charset
         self.errors = errors
 
@@ -275,6 +275,8 @@ class BaseRedisProtocol(LineReceiver):
         self.pipelined_replies = []
 
         self.replyTimeout = replyTimeout
+        # Username is the last init parameter for backward compatibility
+        self.username = username
         self.password = password
         self.dbid = dbid
         self.convertNumbers = convertNumbers
@@ -299,7 +301,7 @@ class BaseRedisProtocol(LineReceiver):
     def connectionMade(self):
         if self.password is not None:
             try:
-                response = yield self.auth(self.password)
+                response = yield self.auth(self.password, self.username)
                 if isinstance(response, ResponseError):
                     raise response
             except Exception as e:
@@ -647,10 +649,13 @@ class BaseRedisProtocol(LineReceiver):
         self.factory.continueTrying = False
         return self.execute_command("QUIT")
 
-    def auth(self, password):
+    def auth(self, password, username=None):
         """
-        Simple password authentication if enabled
+        Simple password authentication if enabled. Username is specified
+        last for backward compatibility.
         """
+        if username:
+            return self.execute_command('AUTH', username, password)
         return self.execute_command("AUTH", password)
 
     def ping(self):
@@ -2266,7 +2271,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
     def __init__(self, uuid, dbid, poolsize, isLazy=False,
                  handler=ConnectionHandler, charset="utf-8", password=None,
-                 replyTimeout=None, convertNumbers=True):
+                 replyTimeout=None, convertNumbers=True, username=None):
         if not isinstance(poolsize, int):
             raise ValueError("Redis poolsize must be an integer, not %s" %
                              repr(poolsize))
@@ -2280,6 +2285,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.poolsize = poolsize
         self.isLazy = isLazy
         self.charset = charset
+        self.username = username
         self.password = password
         self.replyTimeout = replyTimeout
         self.convertNumbers = convertNumbers
@@ -2296,7 +2302,8 @@ class RedisFactory(protocol.ReconnectingClientFactory):
     def buildProtocol(self, addr):
         p = self.protocol(self.charset, replyTimeout=self.replyTimeout,
                           password=self.password, dbid=self.dbid,
-                          convertNumbers=self.convertNumbers)
+                          convertNumbers=self.convertNumbers,
+                          username=self.username)
         p.factory = self
         p.whenConnected().addCallback(self.addConnection)
         return p
@@ -2383,10 +2390,11 @@ class MonitorFactory(RedisFactory):
 
 def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
                    charset, password, ssl_context_factory, connectTimeout, replyTimeout,
-                   convertNumbers):
+                   convertNumbers, username=None):
     uuid = "%s:%d" % (host, port)
     factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler,
-                           charset, password, replyTimeout, convertNumbers)
+                           charset, password, replyTimeout, convertNumbers,
+                           username)
     factory.continueTrying = reconnect
     for x in range(poolsize):
         if ssl_context_factory is True:
@@ -2404,7 +2412,7 @@ def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
 
 def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy,
                           charset, password, ssl_context_factory, connectTimeout, replyTimeout,
-                          convertNumbers):
+                          convertNumbers, username=None):
     err = "Please use a list or tuple of host:port for sharded connections"
     if not isinstance(hosts, (list, tuple)):
         raise ValueError(err)
@@ -2419,7 +2427,7 @@ def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy,
 
         c = makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
                            charset, password, ssl_context_factory, connectTimeout, replyTimeout,
-                           convertNumbers)
+                           convertNumbers, username)
         connections.append(c)
 
     if isLazy:
@@ -2432,78 +2440,80 @@ def makeShardedConnection(hosts, dbid, poolsize, reconnect, isLazy,
 
 def Connection(host="localhost", port=6379, dbid=None, reconnect=True,
                charset="utf-8", password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False,
-               connectTimeout=None, replyTimeout=None, convertNumbers=True):
+               connectTimeout=None, replyTimeout=None, convertNumbers=True, username=None):
     return makeConnection(host, port, dbid, 1, reconnect, False,
                           charset, password, ssl_context_factory, connectTimeout, replyTimeout,
-                          convertNumbers)
+                          convertNumbers, username)
 
 
 def lazyConnection(host="localhost", port=6379, dbid=None, reconnect=True,
                    charset="utf-8", password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False,
-                   connectTimeout=None, replyTimeout=None, convertNumbers=True):
+                   connectTimeout=None, replyTimeout=None, convertNumbers=True,
+                   username=None):
     return makeConnection(host, port, dbid, 1, reconnect, True,
                           charset, password, ssl_context_factory, connectTimeout, replyTimeout,
-                          convertNumbers)
+                          convertNumbers, username)
 
 
 def ConnectionPool(host="localhost", port=6379, dbid=None,
                    poolsize=10, reconnect=True, charset="utf-8", password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False,
                    connectTimeout=None, replyTimeout=None,
-                   convertNumbers=True):
+                   convertNumbers=True, username=None):
     return makeConnection(host, port, dbid, poolsize, reconnect, False,
                           charset, password, ssl_context_factory, connectTimeout, replyTimeout,
-                          convertNumbers)
+                          convertNumbers, username)
 
 
 def lazyConnectionPool(host="localhost", port=6379, dbid=None,
                        poolsize=10, reconnect=True, charset="utf-8",
                        password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False, connectTimeout=None, replyTimeout=None,
-                       convertNumbers=True):
+                       convertNumbers=True, username=None):
     return makeConnection(host, port, dbid, poolsize, reconnect, True,
                           charset, password, ssl_context_factory, connectTimeout, replyTimeout,
-                          convertNumbers)
+                          convertNumbers, username)
 
 
 def ShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8",
                       password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False, connectTimeout=None, replyTimeout=None,
-                      convertNumbers=True):
+                      convertNumbers=True, username=None):
     return makeShardedConnection(hosts, dbid, 1, reconnect, False,
                                  charset, password, ssl_context_factory, connectTimeout,
-                                 replyTimeout, convertNumbers)
+                                 replyTimeout, convertNumbers, username)
 
 
 def lazyShardedConnection(hosts, dbid=None, reconnect=True, charset="utf-8",
                           password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False,
                           connectTimeout=None, replyTimeout=None,
-                          convertNumbers=True):
+                          convertNumbers=True, username=None):
     return makeShardedConnection(hosts, dbid, 1, reconnect, True,
                                  charset, password, ssl_context_factory, connectTimeout,
-                                 replyTimeout, convertNumbers)
+                                 replyTimeout, convertNumbers, username)
 
 
 def ShardedConnectionPool(hosts, dbid=None, poolsize=10, reconnect=True,
                           charset="utf-8", password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False,
                           connectTimeout=None, replyTimeout=None,
-                          convertNumbers=True):
+                          convertNumbers=True, username=None):
     return makeShardedConnection(hosts, dbid, poolsize, reconnect, False,
                                  charset, password, ssl_context_factory, connectTimeout,
-                                 replyTimeout, convertNumbers)
+                                 replyTimeout, convertNumbers, username)
 
 
 def lazyShardedConnectionPool(hosts, dbid=None, poolsize=10, reconnect=True,
                               charset="utf-8", password=None, ssl_context_factory: Union[ssl.ClientContextFactory, bool]=False,
                               connectTimeout=None, replyTimeout=None,
-                              convertNumbers=True):
+                              convertNumbers=True, username=None):
     return makeShardedConnection(hosts, dbid, poolsize, reconnect, True,
                                  charset, password, ssl_context_factory, connectTimeout,
-                                 replyTimeout, convertNumbers)
+                                 replyTimeout, convertNumbers, username)
 
 
 def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy,
                        charset, password, connectTimeout, replyTimeout,
-                       convertNumbers):
+                       convertNumbers, username=None):
     factory = RedisFactory(path, dbid, poolsize, isLazy, UnixConnectionHandler,
-                           charset, password, replyTimeout, convertNumbers)
+                           charset, password, replyTimeout, convertNumbers,
+                           username)
     factory.continueTrying = reconnect
     for x in range(poolsize):
         reactor.connectUNIX(path, factory, connectTimeout)
@@ -2516,7 +2526,7 @@ def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy,
 
 def makeShardedUnixConnection(paths, dbid, poolsize, reconnect, isLazy,
                               charset, password, connectTimeout, replyTimeout,
-                              convertNumbers):
+                              convertNumbers, username=None):
     err = "Please use a list or tuple of paths for sharded unix connections"
     if not isinstance(paths, (list, tuple)):
         raise ValueError(err)
@@ -2525,7 +2535,7 @@ def makeShardedUnixConnection(paths, dbid, poolsize, reconnect, isLazy,
     for path in paths:
         c = makeUnixConnection(path, dbid, poolsize, reconnect, isLazy,
                                charset, password, connectTimeout, replyTimeout,
-                               convertNumbers)
+                               convertNumbers, username)
         connections.append(c)
 
     if isLazy:
@@ -2538,72 +2548,74 @@ def makeShardedUnixConnection(paths, dbid, poolsize, reconnect, isLazy,
 
 def UnixConnection(path="/tmp/redis.sock", dbid=None, reconnect=True,
                    charset="utf-8", password=None,
-                   connectTimeout=None, replyTimeout=None, convertNumbers=True):
+                   connectTimeout=None, replyTimeout=None, convertNumbers=True,
+                   username=None):
     return makeUnixConnection(path, dbid, 1, reconnect, False,
                               charset, password, connectTimeout, replyTimeout,
-                              convertNumbers)
+                              convertNumbers, username)
 
 
 def lazyUnixConnection(path="/tmp/redis.sock", dbid=None, reconnect=True,
                        charset="utf-8", password=None,
                        connectTimeout=None, replyTimeout=None,
-                       convertNumbers=True):
+                       convertNumbers=True, username=None):
     return makeUnixConnection(path, dbid, 1, reconnect, True,
                               charset, password, connectTimeout, replyTimeout,
-                              convertNumbers)
+                              convertNumbers, username)
 
 
 def UnixConnectionPool(path="/tmp/redis.sock", dbid=None, poolsize=10,
                        reconnect=True, charset="utf-8", password=None,
                        connectTimeout=None, replyTimeout=None,
-                       convertNumbers=True):
+                       convertNumbers=True, username=None):
     return makeUnixConnection(path, dbid, poolsize, reconnect, False,
                               charset, password, connectTimeout, replyTimeout,
-                              convertNumbers)
+                              convertNumbers, username)
 
 
 def lazyUnixConnectionPool(path="/tmp/redis.sock", dbid=None, poolsize=10,
                            reconnect=True, charset="utf-8", password=None,
                            connectTimeout=None, replyTimeout=None,
-                           convertNumbers=True):
+                           convertNumbers=True, username=None):
     return makeUnixConnection(path, dbid, poolsize, reconnect, True,
                               charset, password, connectTimeout, replyTimeout,
-                              convertNumbers)
+                              convertNumbers, username)
 
 
 def ShardedUnixConnection(paths, dbid=None, reconnect=True, charset="utf-8",
                           password=None, connectTimeout=None, replyTimeout=None,
-                          convertNumbers=True):
+                          convertNumbers=True, username=None):
     return makeShardedUnixConnection(paths, dbid, 1, reconnect, False,
                                      charset, password, connectTimeout,
-                                     replyTimeout, convertNumbers)
+                                     replyTimeout, convertNumbers, username)
 
 
 def lazyShardedUnixConnection(paths, dbid=None, reconnect=True,
                               charset="utf-8", password=None,
                               connectTimeout=None, replyTimeout=None,
-                              convertNumbers=True):
+                              convertNumbers=True, username=None):
     return makeShardedUnixConnection(paths, dbid, 1, reconnect, True,
                                      charset, password, connectTimeout,
-                                     replyTimeout, convertNumbers)
+                                     replyTimeout, convertNumbers, username)
 
 
 def ShardedUnixConnectionPool(paths, dbid=None, poolsize=10, reconnect=True,
                               charset="utf-8", password=None,
                               connectTimeout=None, replyTimeout=None,
-                              convertNumbers=True):
+                              convertNumbers=True, username=None):
     return makeShardedUnixConnection(paths, dbid, poolsize, reconnect, False,
                                      charset, password, connectTimeout,
-                                     replyTimeout, convertNumbers)
+                                     replyTimeout, convertNumbers, username)
 
 
 def lazyShardedUnixConnectionPool(paths, dbid=None, poolsize=10,
                                   reconnect=True, charset="utf-8",
                                   password=None, connectTimeout=None,
-                                  replyTimeout=None, convertNumbers=True):
+                                  replyTimeout=None, convertNumbers=True,
+                                  username=None):
     return makeShardedUnixConnection(paths, dbid, poolsize, reconnect, True,
                                      charset, password, connectTimeout,
-                                     replyTimeout, convertNumbers)
+                                     replyTimeout, convertNumbers, username)
 
 
 class MasterNotFoundError(ConnectionError):
@@ -2624,7 +2636,7 @@ class SentinelRedisProtocol(RedisProtocol):
                 return RedisProtocol.connectionMade(self)
 
         if self.password is not None:
-            self.auth(self.password)
+            self.auth(self.password, self.username)
 
         return self.role().addCallback(check_role)
 
@@ -2813,4 +2825,4 @@ __all__ = [
 ]
 
 __author__ = "Alexandre Fiori"
-__version__ = version = "1.4.11"
+__version__ = version = "1.4.12"
