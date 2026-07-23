@@ -1,0 +1,55 @@
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    name: py${{ matrix.python-version }} hiredis=${{ matrix.hiredis }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        hiredis: [false, true]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The suite needs both a TCP endpoint and the unix socket hardcoded in
+      # tests/test_unix_connection.py, so run our own server rather than a
+      # service container.
+      - name: Start Redis
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+          sudo systemctl stop redis-server || true
+          redis-server --daemonize yes --port 6379 --unixsocket /tmp/redis.sock
+          for _ in $(seq 30); do
+            redis-cli ping >/dev/null 2>&1 && break
+            sleep 1
+          done
+          redis-cli ping
+          redis-cli -s /tmp/redis.sock ping
+
+      - name: Install
+        run: pip install .
+
+      - name: Install hiredis
+        if: matrix.hiredis
+        run: pip install hiredis
+
+      - name: Run tests
+        run: trial tests/
+        env:
+          PYTHONPATH: .
