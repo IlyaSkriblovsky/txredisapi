@@ -15,8 +15,6 @@
 
 import sys
 
-import six
-
 from twisted.trial import unittest
 from twisted.internet import defer
 from twisted.python import log
@@ -71,8 +69,8 @@ class TestRedisConnections(unittest.TestCase):
 
         # Make sure that all SET commands were sent in a single pipelined write.
         write_history = pipeline.transport.write_history
-        lines_in_first_write = write_history[0].split(six.b("\n"))
-        sets_in_first_write = sum(1 for w in lines_in_first_write if six.b("SET") in w)
+        lines_in_first_write = write_history[0].split(b"\n")
+        sets_in_first_write = sum(1 for w in lines_in_first_write if b"SET" in w)
         self.assertEqual(sets_in_first_write, 3)
 
     @defer.inlineCallbacks

@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import six
-
 import sys
 import operator
 
@@ -48,7 +46,7 @@ class TestBitOps(unittest.TestCase, Redis26CheckMixin):
     @defer.inlineCallbacks
     def test_getbit(self):
         key = self._KEYS[0]
-        yield self.db.set(key, six.b('\xaa'))
+        yield self.db.set(key, b'\xaa')
         l = [1, 0, 1, 0, 1, 0, 1, 0]
         for x in range(8):
             r = yield self.db.getbit(key, x)
@@ -86,30 +84,30 @@ class TestBitOps(unittest.TestCase, Redis26CheckMixin):
     def test_bitop_not(self):
         return self._test_bitop([operator.__not__, operator.not_,
                                  'not', 'NOT', 'NoT'],
-                                six.b('\x0f\x0f\x0f\x0f'),
+                                b'\x0f\x0f\x0f\x0f',
                                 None,
-                                six.b('\xf0\xf0\xf0\xf0'))
+                                b'\xf0\xf0\xf0\xf0')
 
     def test_bitop_or(self):
         return self._test_bitop([operator.__or__, operator.or_,
                                  'or', 'OR', 'oR'],
-                                six.b('\x0f\x0f\x0f\x0f'),
-                                six.b('\xf0\xf0\xf0\xf0'),
-                                six.b('\xff\xff\xff\xff'))
+                                b'\x0f\x0f\x0f\x0f',
+                                b'\xf0\xf0\xf0\xf0',
+                                b'\xff\xff\xff\xff')
 
     def test_bitop_and(self):
         return self._test_bitop([operator.__and__, operator.and_,
                                  'and', 'AND', 'AnD'],
-                                six.b('\x0f\x0f\x0f\x0f'),
-                                six.b('\xf0\xf0\xf0\xf0'),
-                                six.b('\x00\x00\x00\x00'))
+                                b'\x0f\x0f\x0f\x0f',
+                                b'\xf0\xf0\xf0\xf0',
+                                b'\x00\x00\x00\x00')
 
     def test_bitop_xor(self):
         return self._test_bitop([operator.__xor__, operator.xor,
                                  'xor', 'XOR', 'XoR'],
-                                six.b('\x9c\x9c\x9c\x9c'),
-                                six.b('\x6c\x6c\x6c\x6c'),
-                                six.b('\xf0\xf0\xf0\xf0'))
+                                b'\x9c\x9c\x9c\x9c',
+                                b'\x6c\x6c\x6c\x6c',
+                                b'\xf0\xf0\xf0\xf0')
 
     def test_bitop_invalid(self):
         self.assertFailure(self.db.bitop('test', 'test', 'test'),
