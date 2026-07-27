@@ -16,8 +16,6 @@
 import sys
 import hashlib
 
-import six
-
 import txredisapi as redis
 
 from twisted.internet import defer

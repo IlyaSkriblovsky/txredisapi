@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import six
-
 import os
 import base64
 
@@ -61,7 +59,7 @@ class LargeMultiBulk(unittest.TestCase):
     @defer.inlineCallbacks
     def test_bulk_numeric(self):
         test_values = [
-            six.b(''), six.b('.hello'), six.b('+world'), six.b('123test'),
+            b'', b'.hello', b'+world', b'123test',
             +1, 0.1, 0.01, -0.1, 0, -10]
         for v in test_values:
             yield self.db.set(self._KEY, v)
@@ -76,7 +74,7 @@ class LargeMultiBulk(unittest.TestCase):
         if there's a '.' in the string.
         This test is to ensure this behavior isn't broken in the future.
         '''
-        values = [six.b('+inf'), six.b('-inf'), six.b('NaN')]
+        values = [b'+inf', b'-inf', b'NaN']
         for x in values:
             yield self.db.set(self._KEY, x)
             r = yield self.db.get(self._KEY)

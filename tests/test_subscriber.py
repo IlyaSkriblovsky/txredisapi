@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import six
-
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
 

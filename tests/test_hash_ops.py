@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import six
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
@@ -58,8 +56,8 @@ class TestRedisHashOperations(unittest.TestCase):
         t_dict['key2'] = 'dos'
         yield db.hmset("txredisapi:HKeysHVals", t_dict)
 
-        vs_u = [six.text_type(v) for v in t_dict.values()]
-        ks_u = [six.text_type(k) for k in t_dict.keys()]
+        vs_u = [str(v) for v in t_dict.values()]
+        ks_u = [str(k) for k in t_dict.keys()]
         k_res = yield db.hkeys("txredisapi:HKeysHVals")
         v_res = yield db.hvals("txredisapi:HKeysHVals")
         self.assertEqual(sorted(ks_u), sorted(k_res))
