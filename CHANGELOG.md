@@ -1,5 +1,13 @@
 # Changelog
 
+## Release 1.5.0 (2026-07-27)
+
+### Incompatible change
+
+- Dropped support for Python <3.5
+
+---
+
 ## Release 1.4.12 (2026-05-06)
 
 ### Features
