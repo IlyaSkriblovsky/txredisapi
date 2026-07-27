@@ -50,6 +50,6 @@ jobs:
         run: pip install hiredis
 
       - name: Run tests
-        run: trial tests/
+        run: trial tests
         env:
           PYTHONPATH: .
