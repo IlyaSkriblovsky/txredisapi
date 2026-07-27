@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import six
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
@@ -25,7 +23,7 @@ from tests.mixins import REDIS_HOST, REDIS_PORT
 
 class TestConnectionCharset(unittest.TestCase):
     TEST_KEY = 'txredisapi:test_key'
-    TEST_VALUE_UNICODE = six.text_type('\u262d' * 3)
+    TEST_VALUE_UNICODE = str('\u262d' * 3)
     TEST_VALUE_BINARY = b'\x00\x01' * 3
 
     @defer.inlineCallbacks
@@ -34,7 +32,7 @@ class TestConnectionCharset(unittest.TestCase):
 
         yield db.set(self.TEST_KEY, self.TEST_VALUE_BINARY)
         result = yield db.get(self.TEST_KEY)
-        self.assertTrue(type(result) == six.binary_type)
+        self.assertTrue(type(result) == bytes)
         self.assertEqual(result, self.TEST_VALUE_BINARY)
 
         yield db.delete(self.TEST_KEY)
@@ -47,7 +45,7 @@ class TestConnectionCharset(unittest.TestCase):
         yield db.set(self.TEST_KEY, self.TEST_VALUE_UNICODE)
         result = yield db.get(self.TEST_KEY)
         self.assertEqual(result, self.TEST_VALUE_UNICODE)
-        self.assertTrue(type(result) == six.text_type)
+        self.assertTrue(type(result) == str)
 
         yield db.delete(self.TEST_KEY)
         yield db.disconnect()

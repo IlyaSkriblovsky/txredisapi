@@ -1,4 +1,3 @@
-import six
 import sys
 from twisted.internet import defer, reactor
 from twisted.internet.protocol import Factory
@@ -23,12 +22,12 @@ class FakeRedisProtocol(BaseRedisProtocol):
             parts.extend(cls._encode_value(x) for x in value)
             return b''.join(parts)
 
-        if isinstance(value, six.text_type):
+        if isinstance(value, str):
             binary = value.encode("utf-8")
         elif isinstance(value, bytes):
             binary = value
         else:
-            binary = six.text_type(value).encode("utf-8")
+            binary = str(value).encode("utf-8")
         return b''.join([b'$', str(len(binary)).encode('ascii'), b'\r\n', binary, b'\r\n'])
 
     def send_reply(self, reply):
