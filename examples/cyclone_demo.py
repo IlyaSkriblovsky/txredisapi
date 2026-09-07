@@ -27,6 +27,7 @@ import cyclone.redis
 
 from twisted.python import log
 from twisted.internet import defer, reactor
+from twisted.internet.endpoints import HostnameEndpoint
 
 
 class Application(cyclone.web.Application):
@@ -55,7 +56,7 @@ class RedisMixin(object):
         qf = cyclone.redis.SubscriberFactory()
         qf.maxDelay = 20
         qf.protocol = QueueProtocol
-        reactor.connectTCP(host, port, qf)
+        qf.startConnecting(HostnameEndpoint(reactor, host, port))
 
         # Normal client connection
         RedisMixin.dbconn = cyclone.redis.lazyConnectionPool(host, port,

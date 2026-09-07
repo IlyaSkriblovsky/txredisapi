@@ -25,11 +25,13 @@ from __future__ import print_function
 
 import txredisapi as redis
 
-from twisted.application import internet
+from twisted.application.internet import ClientService, backoffPolicy
 from twisted.application import service
+from twisted.internet import reactor
+from twisted.internet.endpoints import HostnameEndpoint
 
 
-class myProtocol(redis.SubscriberProtocol):
+class MyProtocol(redis.SubscriberProtocol):
     def connectionMade(self):
         print("waiting for messages...")
         print("use the redis client to send messages:")
@@ -43,7 +45,7 @@ class myProtocol(redis.SubscriberProtocol):
         # reactor.callLater(10, self.unsubscribe, "zz")
         # reactor.callLater(15, self.punsubscribe, "foo.*")
 
-        # self.continueTrying = False
+        # self.factory.stopTrying()
         # self.transport.loseConnection()
 
     def messageReceived(self, pattern, channel, message):
@@ -53,13 +55,12 @@ class myProtocol(redis.SubscriberProtocol):
         print("lost connection:", reason)
 
 
-class myFactory(redis.SubscriberFactory):
-    # SubscriberFactory is a wapper for the ReconnectingClientFactory
-    maxDelay = 120
-    continueTrying = True
-    protocol = myProtocol
+class MyFactory(redis.SubscriberFactory):
+    protocol = MyProtocol
 
 
 application = service.Application("subscriber")
-srv = internet.TCPClient("127.0.0.1", 6379, myFactory())
+endpoint = HostnameEndpoint(reactor, "127.0.0.1", 6379)
+srv = ClientService(endpoint, MyFactory(),
+                    retryPolicy=backoffPolicy(maxDelay=120))
 srv.setServiceParent(application)
