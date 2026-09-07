@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
+from OpenSSL import crypto
 from twisted.internet import defer, reactor, ssl
 from twisted.trial import unittest
 
@@ -20,21 +27,38 @@ import txredisapi as redis
 from tests.test_sentinel import FakeRedisFactory
 
 
-_certificate = []
+_options = []
 
 
 def selfSignedOptions():
     """
-    Server side TLS options with a self-signed certificate, generated once
-    because generating a key is slow.
-    """
-    if not _certificate:
-        key = ssl.KeyPair.generate(size=2048)
-        _certificate.append((key, key.selfSignedCert(1, CN="localhost")))
+    Server side TLS options with a self-signed certificate, built once because
+    generating a key is slow.
 
-    key, cert = _certificate[0]
-    return ssl.CertificateOptions(privateKey=key.original,
-                                  certificate=cert.original)
+    twisted.internet.ssl.KeyPair.selfSignedCert() would be shorter, but it
+    needs OpenSSL.crypto.X509Req, which recent pyOpenSSL releases no longer
+    have.
+    """
+    if not _options:
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        name = x509.Name(
+            [x509.NameAttribute(NameOID.COMMON_NAME, u"localhost")])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        certificate = (
+            x509.CertificateBuilder()
+            .subject_name(name)
+            .issuer_name(name)
+            .public_key(key.public_key())
+            .serial_number(1)
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=1))
+            .sign(key, hashes.SHA256())
+        )
+        _options.append(ssl.CertificateOptions(
+            privateKey=crypto.PKey.from_cryptography_key(key),
+            certificate=crypto.X509.from_cryptography(certificate)))
+
+    return _options[0]
 
 
 class TestSSLConnections(unittest.TestCase):
