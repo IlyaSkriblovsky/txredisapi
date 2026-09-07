@@ -1,5 +1,50 @@
 # Changelog
 
+## Release 1.6.0 (UNRELEASED)
+
+### Bugfixes
+
+- Hostnames are now resolved with `getaddrinfo()`, through Twisted's
+  `HostnameEndpoint`, instead of `socket.gethostbyname()`. Servers reachable
+  over IPv6 only (a name with an AAAA record and no A record) can be connected
+  to now (#161)
+
+- `disconnect()` now also cancels a scheduled reconnection and a connection
+  attempt in progress
+
+- With `reconnect=False`, the Deferred returned by `Connection()` and
+  `ConnectionPool()` errbacks when the connection can't be established instead
+  of never firing at all
+
+- The reconnection delay is reset after a successful connection instead of
+  growing up to `maxDelay` and staying there forever
+
+### Incompatible changes
+
+- Connections are maintained by
+  `twisted.application.internet.ClientService` now, and `RedisFactory` is no
+  longer a `ReconnectingClientFactory`. Code connecting a factory on its own
+  with `reactor.connectTCP()` or `twisted.application.internet.TCPClient` has
+  to use `factory.startConnecting(endpoint)` or its own
+  `ClientService(endpoint, factory)` instead - see `examples/subscriber.py`
+
+- `factory.continueTrying = False` is replaced by `factory.stopTrying()`;
+  `retry()`, `resetDelay()` and `delay` are gone. `maxDelay`, `initialDelay`,
+  `factor` and `jitter` still configure the backoff and are used by the new
+  `RedisFactory.retryDelay()`
+
+- `SentinelConnectionFactory.try_to_connect()` is gone: the address of the
+  master or of a slave is discovered by the endpoint before every attempt.
+  Subclasses overriding `try_to_connect()`, `clientConnectionFailed()` or
+  `clientConnectionLost()` have no effect anymore
+
+- `connectTimeout` applies to each resolved address of a hostname rather than
+  to the connection attempt as a whole
+
+- Twisted 18.7.0 or newer is required
+
+---
+
 ## Release 1.5.0 (2026-07-27)
 
 ### Incompatible change
