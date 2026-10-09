@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from twisted.internet import defer, reactor
+from twisted.internet.endpoints import HostnameEndpoint
 from twisted.trial import unittest
 
 import txredisapi as redis
@@ -24,8 +25,9 @@ class TestSubscriberProtocol(unittest.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         factory = redis.SubscriberFactory()
-        factory.continueTrying = False
-        reactor.connectTCP(REDIS_HOST, REDIS_PORT, factory)
+        factory.reconnect = False
+        factory.startConnecting(
+            HostnameEndpoint(reactor, REDIS_HOST, REDIS_PORT))
         self.db = yield factory.deferred
 
     @defer.inlineCallbacks
@@ -125,8 +127,9 @@ class TestAuthenticatedSubscriberProtocol(unittest.TestCase):
         factory = redis.RedisFactory(None, dbid=0, poolsize=1,
                                      password="password")
         factory.protocol = redis.SubscriberProtocol
-        factory.continueTrying = False
-        reactor.connectTCP(REDIS_HOST, REDIS_PORT, factory)
+        factory.reconnect = False
+        factory.startConnecting(
+            HostnameEndpoint(reactor, REDIS_HOST, REDIS_PORT))
         self.db = yield factory.deferred
 
     @defer.inlineCallbacks

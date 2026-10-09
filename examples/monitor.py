@@ -21,11 +21,12 @@ from __future__ import print_function
 
 import txredisapi
 
-from twisted.application import internet
 from twisted.application import service
+from twisted.internet import reactor
+from twisted.internet.endpoints import HostnameEndpoint
 
 
-class myMonitor(txredisapi.MonitorProtocol):
+class MyMonitor(txredisapi.MonitorProtocol):
     def connectionMade(self):
         print("waiting for monitor data")
         print("use the redis client to send commands in another terminal")
@@ -38,13 +39,24 @@ class myMonitor(txredisapi.MonitorProtocol):
         print("lost connection:", reason)
 
 
-class myFactory(txredisapi.MonitorFactory):
-    # also a wapper for the ReconnectingClientFactory
-    maxDelay = 120
-    continueTrying = True
-    protocol = myMonitor
+class MyFactory(txredisapi.MonitorFactory):
+    protocol = MyMonitor
+
+
+class RedisService(service.Service):
+    """
+    Keeps the connection up for as long as the application runs. The factory
+    reconnects and backs off on its own; disconnect() stops it for good.
+    """
+
+    def startService(self):
+        self.factory = MyFactory()
+        self.factory.startConnecting(
+            HostnameEndpoint(reactor, "127.0.0.1", 6379))
+
+    def stopService(self):
+        return self.factory.disconnect()
 
 
 application = service.Application("monitor")
-srv = internet.TCPClient("127.0.0.1", 6379, myFactory())
-srv.setServiceParent(application)
+RedisService().setServiceParent(application)

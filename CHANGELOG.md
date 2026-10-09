@@ -1,5 +1,56 @@
 # Changelog
 
+## Release 1.6.0 (UNRELEASED)
+
+### Bugfixes
+
+- Hostnames are now resolved with `getaddrinfo()`, through Twisted's
+  `HostnameEndpoint`, instead of `socket.gethostbyname()`. Servers reachable
+  over IPv6 only (a name with an AAAA record and no A record) can be connected
+  to now (#161)
+
+- `disconnect()` now also cancels a scheduled reconnection and a connection
+  attempt in progress
+
+- With `reconnect=False`, the Deferred returned by `Connection()` and
+  `ConnectionPool()` errbacks when the connection can't be established instead
+  of never firing at all
+
+- The reconnection delay is reset after a successful connection instead of
+  growing up to `maxDelay` and staying there forever
+
+- A connection that is dropped before it becomes usable - a Sentinel master
+  that turns out to have the wrong role, for one - no longer resets the
+  backoff, so such a server is not reconnected to in a tight loop
+
+- `whenConnected()` of the protocol fires right away when the connection is
+  already up and usable, instead of returning a Deferred that never fires
+
+### Incompatible changes
+
+- Connections are maintained by
+  `twisted.application.internet.ClientService` now, and `RedisFactory` is no
+  longer a `ReconnectingClientFactory`. Code connecting a factory on its own
+  with `reactor.connectTCP()` or `twisted.application.internet.TCPClient` has
+  to use `factory.startConnecting(endpoint)` instead - see `examples/subscriber.py`
+
+- `factory.continueTrying = False` is replaced by `factory.stopTrying()`;
+  `retry()`, `resetDelay()` and `delay` are gone. `maxDelay`, `initialDelay`,
+  `factor` and `jitter` still configure the backoff and are used by the new
+  `RedisFactory.retryDelay()`
+
+- `SentinelConnectionFactory.try_to_connect()` is gone: the address of the
+  master or of a slave is discovered by the endpoint before every attempt.
+  Subclasses overriding `try_to_connect()`, `clientConnectionFailed()` or
+  `clientConnectionLost()` have no effect anymore
+
+- `connectTimeout` applies to each resolved address of a hostname rather than
+  to the connection attempt as a whole
+
+- Twisted 18.7.0 or newer is required
+
+---
+
 ## Release 1.5.0 (2026-07-27)
 
 ### Incompatible change

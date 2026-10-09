@@ -25,11 +25,12 @@ from __future__ import print_function
 
 import txredisapi as redis
 
-from twisted.application import internet
 from twisted.application import service
+from twisted.internet import reactor
+from twisted.internet.endpoints import HostnameEndpoint
 
 
-class myProtocol(redis.SubscriberProtocol):
+class MyProtocol(redis.SubscriberProtocol):
     def connectionMade(self):
         print("waiting for messages...")
         print("use the redis client to send messages:")
@@ -43,7 +44,7 @@ class myProtocol(redis.SubscriberProtocol):
         # reactor.callLater(10, self.unsubscribe, "zz")
         # reactor.callLater(15, self.punsubscribe, "foo.*")
 
-        # self.continueTrying = False
+        # self.factory.stopTrying()
         # self.transport.loseConnection()
 
     def messageReceived(self, pattern, channel, message):
@@ -53,13 +54,24 @@ class myProtocol(redis.SubscriberProtocol):
         print("lost connection:", reason)
 
 
-class myFactory(redis.SubscriberFactory):
-    # SubscriberFactory is a wapper for the ReconnectingClientFactory
-    maxDelay = 120
-    continueTrying = True
-    protocol = myProtocol
+class MyFactory(redis.SubscriberFactory):
+    protocol = MyProtocol
+
+
+class RedisService(service.Service):
+    """
+    Keeps the connection up for as long as the application runs. The factory
+    reconnects and backs off on its own; disconnect() stops it for good.
+    """
+
+    def startService(self):
+        self.factory = MyFactory()
+        self.factory.startConnecting(
+            HostnameEndpoint(reactor, "127.0.0.1", 6379))
+
+    def stopService(self):
+        return self.factory.disconnect()
 
 
 application = service.Application("subscriber")
-srv = internet.TCPClient("127.0.0.1", 6379, myFactory())
-srv.setServiceParent(application)
+RedisService().setServiceParent(application)

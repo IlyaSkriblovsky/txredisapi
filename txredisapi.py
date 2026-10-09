@@ -33,15 +33,19 @@ import string
 import hashlib
 import random
 
-from typing import Optional, Union
+from typing import Union
+from twisted.application.internet import ClientService
 from twisted.internet import defer, ssl
 from twisted.internet import protocol
 from twisted.internet import reactor
-from twisted.internet.tcp import Connector
+from twisted.internet import task
+from twisted.internet.endpoints import HostnameEndpoint, UNIXClientEndpoint
+from twisted.internet.interfaces import IStreamClientEndpoint
 from twisted.protocols import basic
-from twisted.protocols import policies
+from twisted.protocols.tls import TLSMemoryBIOFactory
 from twisted.python import log
 from twisted.python.failure import Failure
+from zope.interface import implementer
 
 try:
     import hiredis
@@ -281,9 +285,16 @@ class BaseRedisProtocol(LineReceiver):
 
         self._waiting_for_connect = []
         self._waiting_for_disconnect = []
+        # BaseProtocol.makeConnection() sets self.connected before
+        # connectionMade() even starts, so it says nothing about the
+        # connection being usable; this does
+        self._ready = False
 
 
     def whenConnected(self):
+        if self._ready:
+            return defer.succeed(self)
+
         d = defer.Deferred()
         self._waiting_for_connect.append(d)
         return d
@@ -303,7 +314,7 @@ class BaseRedisProtocol(LineReceiver):
                 if isinstance(response, ResponseError):
                     raise response
             except Exception as e:
-                self.factory.continueTrying = False
+                self.factory.stopTrying()
                 self.transport.loseConnection()
 
                 msg = "Redis error: could not auth: %s" % (str(e))
@@ -318,7 +329,7 @@ class BaseRedisProtocol(LineReceiver):
                 if isinstance(response, ResponseError):
                     raise response
             except Exception as e:
-                self.factory.continueTrying = False
+                self.factory.stopTrying()
                 self.transport.loseConnection()
 
                 msg = "Redis error: could not set dbid=%s: %s" % \
@@ -329,12 +340,14 @@ class BaseRedisProtocol(LineReceiver):
                 return None
 
         self.connected = 1
+        self._ready = True
         self._waiting_for_connect, dfrs = [], self._waiting_for_connect
         for d in dfrs:
             d.callback(self)
 
     def connectionLost(self, why):
         self.connected = 0
+        self._ready = False
         self.script_hashes.clear()
 
         self._waiting_for_disconnect, dfrs = [], self._waiting_for_disconnect
@@ -644,7 +657,7 @@ class BaseRedisProtocol(LineReceiver):
         """
         Close the connection
         """
-        self.factory.continueTrying = False
+        self.factory.stopTrying()
         return self.execute_command("QUIT")
 
     def auth(self, password, username=None):
@@ -1672,7 +1685,7 @@ class BaseRedisProtocol(LineReceiver):
         """
         Synchronously save the DB on disk, then shutdown the server
         """
-        self.factory.continueTrying = False
+        self.factory.stopTrying()
         return self.execute_command("SHUTDOWN")
 
     def bgrewriteaof(self):
@@ -1958,15 +1971,7 @@ class ConnectionHandler(object):
         self._connected = factory.deferred
 
     def disconnect(self):
-        self._factory.continueTrying = 0
-        self._factory.disconnectCalled = True
-        for conn in self._factory.pool:
-            try:
-                conn.transport.loseConnection()
-            except:
-                pass
-
-        return self._factory.waitForEmptyPool()
+        return self._factory.disconnect()
 
     def __getattr__(self, method):
         def wrapper(*args, **kwargs):
@@ -2261,11 +2266,195 @@ class PeekableQueue(defer.DeferredQueue):
         defer.DeferredQueue.put(self, obj)
 
 
-class RedisFactory(protocol.ReconnectingClientFactory):
+@implementer(IStreamClientEndpoint)
+class _TLSEndpoint(object):
+    """
+    Adds TLS to another client endpoint.
+
+    twisted.internet.endpoints.wrapClientTLS() would do the same, but it only
+    accepts IOpenSSLClientConnectionCreator providers, while our public
+    ssl_context_factory argument is an old-style ClientContextFactory.
+    TLSMemoryBIOFactory accepts both.
+    """
+
+    def __init__(self, wrappedEndpoint, contextFactory):
+        self.wrappedEndpoint = wrappedEndpoint
+        self.contextFactory = contextFactory
+
+    def connect(self, protocolFactory):
+        wrapper = TLSMemoryBIOFactory(self.contextFactory, True, protocolFactory)
+        d = self.wrappedEndpoint.connect(wrapper)
+        return d.addCallback(lambda protocol: protocol.wrappedProtocol)
+
+
+def _makeEndpoint(host, port, connectTimeout=None, ssl_context_factory=None):
+    """
+    Client endpoint for a Redis server.
+
+    Hostnames are resolved with getaddrinfo(), so servers reachable over IPv6
+    only are supported as well as IPv4 ones.
+    """
+    endpoint = HostnameEndpoint(reactor, host, port, timeout=connectTimeout)
+    if ssl_context_factory:
+        endpoint = _TLSEndpoint(endpoint, ssl_context_factory)
+    return endpoint
+
+
+class _SlotFactory(object):
+    """
+    Hands out the protocols of a RedisFactory and tells a pool slot when the
+    connection of one of them is lost.
+
+    The protocol can't be relied on for that: overriding connectionLost()
+    without chaining to the base one is a common thing to do in a protocol
+    written for a SubscriberFactory, and it would leave the slot waiting for a
+    notification that never comes.
+    """
+
+    def __init__(self, factory, slot):
+        self.factory = factory
+        self.slot = slot
+
+    def buildProtocol(self, addr):
+        protocol = self.factory.buildProtocol(addr)
+        connectionLost = protocol.connectionLost
+
+        def notify(reason):
+            try:
+                return connectionLost(reason)
+            finally:
+                self.slot._connectionLost(protocol)
+
+        protocol.connectionLost = notify
+        return protocol
+
+    def __getattr__(self, item):
+        return getattr(self.factory, item)
+
+
+class _PoolSlot(object):
+    """
+    A single connection of a RedisFactory's pool.
+
+    ClientService does the connecting, reconnecting and backing off; this adds
+    the "stop reconnecting" behavior needed by reconnect=False and by quit(),
+    shutdown() and failed authentication.
+    """
+
+    def __init__(self, factory, endpoint, reconnect=True):
+        self.factory = factory
+        self.reconnect = reconnect
+        self.protocol = None
+        self.rejected = 0
+        self.service = ClientService(endpoint, _SlotFactory(factory, self),
+                                     retryPolicy=self._retryDelay,
+                                     prepareConnection=self._prepareConnection)
+
+    def start(self):
+        if not self.reconnect:
+            # Nothing is going to retry, so a failed attempt is final and has
+            # to be reported instead of leaving the caller waiting forever.
+            # Registered before the service is started because an endpoint
+            # that fails synchronously would consume the first failure
+            self.service.whenConnected(failAfterFailures=1) \
+                .addErrback(self._connectionFailed)
+
+        self.service.startService()
+
+    def stopTrying(self):
+        """
+        Stop (re)connecting. A live connection is left alone and this slot
+        stops for good once it is closed.
+        """
+        self.reconnect = False
+        if self.protocol is not None:
+            return defer.succeed(None)
+
+        # Stopping the service cancels the attempt in progress. Called from
+        # connectionMade of a connection that has just been established, that
+        # would cancel an attempt the endpoint is still finishing up, so give
+        # the reactor a chance to complete it first
+        return task.deferLater(reactor, 0, self._stopIfIdle)
+
+    def _stopIfIdle(self):
+        if self.protocol is not None:
+            # connected in the meantime: a live connection is left alone
+            return None
+
+        return self.service.stopService()
+
+    def stop(self):
+        """
+        Stop (re)connecting and close the connection if there is one.
+        """
+        self.reconnect = False
+        return self.service.stopService()
+
+    def _retryDelay(self, attempt):
+        # ClientService forgets the failed attempts as soon as a transport is
+        # established, but a connection that is dropped before it becomes
+        # usable (a Sentinel master with the wrong role, ...) must not reset
+        # the backoff or we would reconnect in a tight loop
+        return self.factory.retryDelay(max(attempt, self.rejected))
+
+    def _prepareConnection(self, protocol):
+        self.protocol = protocol
+        # cleared as soon as the connection turns out to be usable
+        self.rejected += 1
+        protocol.whenConnected().addCallback(self._connectionUsable)
+
+    def _connectionUsable(self, protocol):
+        self.rejected = 0
+
+    def _connectionLost(self, protocol):
+        self.protocol = None
+        if not self.reconnect:
+            self.service.stopService()
+
+    def _connectionFailed(self, failure):
+        if failure.check(defer.CancelledError):
+            # this slot has been stopped, not a connection problem
+            return None
+
+        # whenConnected() fires from the middle of a ClientService state
+        # transition, which can't be stopped reentrantly
+        reactor.callLater(0, self._reportConnectionFailure, failure)
+        return None
+
+    def _reportConnectionFailure(self, failure):
+        msg = "Redis error: could not connect: %s" % failure.getErrorMessage()
+
+        if self.factory.isLazy:
+            # The handler is already in the caller's hands, so the connections
+            # of the other slots stay usable and there is someone to close them
+            self.stop()
+            log.msg(msg)
+        else:
+            # The pool will never be complete, so nobody is ever going to get
+            # the handler - and nobody would be able to close the connections
+            # the other slots have made
+            self.factory.disconnect()
+
+        self.factory.connectionError(msg)
+
+
+class RedisFactory(protocol.Factory):
+    #: Delay before the first reconnection attempt, in seconds
+    initialDelay = 1.0
+    #: Maximum delay between reconnection attempts, in seconds
     maxDelay = 10
+    #: Multiplier applied to the delay after each failed attempt
+    factor = 2.7182818284590451  # (math.e)
+    #: Amount of randomness added to the delay, as a fraction of it
+    jitter = 0.119626565582
+
     protocol = RedisProtocol
 
     noisy = False
+
+    #: Whether lost connections should be reestablished. Connection functions
+    #: set it from their reconnect argument.
+    reconnect = True
 
     def __init__(self, uuid, dbid, poolsize, isLazy=False,
                  handler=ConnectionHandler, charset="utf-8", password=None,
@@ -2291,11 +2480,75 @@ class RedisFactory(protocol.ReconnectingClientFactory):
         self.idx = 0
         self.size = 0
         self.pool = []
+        self.slots = []
+        self.stopped = False
         self.deferred = defer.Deferred()
         self.handler = handler(self)
         self.connectionQueue = PeekableQueue()
         self._waitingForEmptyPool = set()
         self.disconnectCalled = False
+
+    def startConnecting(self, endpoint):
+        """
+        Open and maintain poolsize connections to the given endpoint.
+
+        This is the only supported way of connecting a factory: stopTrying(),
+        disconnect(), quit() and shutdown() act on the connections started
+        here and can't stop a ClientService created somewhere else.
+        """
+        for _ in range(self.poolsize):
+            slot = _PoolSlot(self, endpoint, self.reconnect)
+            self.slots.append(slot)
+            slot.start()
+
+    def stopTrying(self):
+        """
+        Stop (re)connecting. Connections that are alive are left alone and
+        are not reestablished once they are closed.
+
+        Returns a Deferred that fires when all idle slots have stopped.
+        """
+        self.stopped = True
+        return defer.gatherResults([slot.stopTrying() for slot in self.slots],
+                                   consumeErrors=True)
+
+    def disconnect(self):
+        """
+        Stop (re)connecting and close all connections.
+
+        Returns a Deferred that fires when the pool is empty.
+        """
+        self.stopped = True
+        self.disconnectCalled = True
+        d = defer.gatherResults([slot.stop() for slot in self.slots],
+                                consumeErrors=True)
+
+        def loseRemainingConnections(_):
+            # stopping a slot closes its connection; this is for any
+            # connection that outlived its slot
+            for conn in list(self.pool):
+                conn.transport.loseConnection()
+            return self.waitForEmptyPool()
+
+        return d.addCallback(loseRemainingConnections)
+
+    def retryDelay(self, attempt):
+        """
+        Seconds to wait before the given consecutive connection attempt.
+        Used as ClientService's retryPolicy.
+        """
+        try:
+            # the exponent is clamped like in Twisted's own backoffPolicy():
+            # maxDelay caps the delay long before the power overflows, and a
+            # long enough outage would reach that point
+            delay = min(self.initialDelay * (self.factor ** min(100, attempt - 1)),
+                        self.maxDelay)
+        except OverflowError:
+            delay = self.maxDelay
+
+        if self.jitter:
+            delay = random.normalvariate(delay, delay * self.jitter)
+        return max(0, delay)
 
     def buildProtocol(self, addr):
         p = self.protocol(self.charset, replyTimeout=self.replyTimeout,
@@ -2303,12 +2556,26 @@ class RedisFactory(protocol.ReconnectingClientFactory):
                           convertNumbers=self.convertNumbers,
                           username=self.username)
         p.factory = self
-        p.whenConnected().addCallback(self.addConnection)
+        p.whenConnected().addCallback(self._connectionReady)
         return p
+
+    def _connectionReady(self, conn):
+        # A connection without password and dbid is ready before
+        # makeConnection() even returns, i.e. while the reactor is still in the
+        # middle of establishing it and ClientService doesn't know about it
+        # yet. Handing it over to the pool right away would run user code
+        # (which may well disconnect at once) at that point, so wait for the
+        # reactor to finish first.
+        reactor.callLater(0, self.addConnection, conn)
 
     def addConnection(self, conn):
         if self.disconnectCalled:
             conn.transport.loseConnection()
+            return
+
+        if not conn.connected:
+            # died during the reactor turn _connectionReady waits for; adding
+            # it would leave a dead connection in the pool forever
             return
 
         conn.whenDisconnected().addCallback(self.delConnection)
@@ -2354,7 +2621,7 @@ class RedisFactory(protocol.ReconnectingClientFactory):
 
     @defer.inlineCallbacks
     def getConnection(self, peek=False):
-        if not self.continueTrying and not self.size:
+        if not self.size and (self.stopped or not self.reconnect):
             raise ConnectionError("Not connected")
 
         while True:
@@ -2393,14 +2660,11 @@ def makeConnection(host, port, dbid, poolsize, reconnect, isLazy,
     factory = RedisFactory(uuid, dbid, poolsize, isLazy, ConnectionHandler,
                            charset, password, replyTimeout, convertNumbers,
                            username)
-    factory.continueTrying = reconnect
-    for x in range(poolsize):
-        if ssl_context_factory is True:
-            ssl_context_factory = ssl.ClientContextFactory()
-        if ssl_context_factory:
-            reactor.connectSSL(host, port, factory, ssl_context_factory, connectTimeout)
-        else:
-            reactor.connectTCP(host, port, factory, connectTimeout)
+    factory.reconnect = reconnect
+    if ssl_context_factory is True:
+        ssl_context_factory = ssl.ClientContextFactory()
+    factory.startConnecting(_makeEndpoint(host, port, connectTimeout,
+                                          ssl_context_factory))
 
     if isLazy:
         return factory.handler
@@ -2512,9 +2776,9 @@ def makeUnixConnection(path, dbid, poolsize, reconnect, isLazy,
     factory = RedisFactory(path, dbid, poolsize, isLazy, UnixConnectionHandler,
                            charset, password, replyTimeout, convertNumbers,
                            username)
-    factory.continueTrying = reconnect
-    for x in range(poolsize):
-        reactor.connectUNIX(path, factory, connectTimeout)
+    factory.reconnect = reconnect
+    factory.startConnecting(UNIXClientEndpoint(reactor, path,
+                                               timeout=connectTimeout))
 
     if isLazy:
         return factory.handler
@@ -2623,14 +2887,11 @@ class MasterNotFoundError(ConnectionError):
 class SentinelRedisProtocol(RedisProtocol):
 
     def connectionMade(self):
-        self.factory.resetDelay()
-
         def check_role(role):
             if self.factory.is_master and role[0] != "master":
                 self.transport.loseConnection()
                 return defer.succeed(None)
             else:
-                self.factory.resetDelay()
                 return RedisProtocol.connectionMade(self)
 
         if self.password is not None:
@@ -2651,58 +2912,74 @@ class SentinelConnectionFactory(RedisFactory):
         self.service_name = service_name
         self.is_master = is_master
 
+    def retryDelay(self, attempt):
+        if attempt <= 1:
+            # Reconnect right away: the address is rediscovered on every
+            # attempt anyway, and a changed one is the likely reason we got
+            # disconnected in the first place
+            return 0
+
+        return RedisFactory.retryDelay(self, attempt)
+
+
+@implementer(IStreamClientEndpoint)
+class _SentinelEndpoint(object):
+    """
+    Endpoint that asks Sentinel for the address of the master, or of one of
+    the slaves, of a service before every connection attempt.
+    """
+
+    def __init__(self, factory):
+        self.factory = factory
         self._current_master_addr = None
         self._slave_no = 0
 
-    def clientConnectionFailed(self, connector, reason):
-        self.try_to_connect(connector)
-
-    def clientConnectionLost(self, connector, unused_reason):
-        self.try_to_connect(connector, nodelay=True)
-
-    def try_to_connect(self, connector, force_master=False, nodelay=False):
-        if not self.continueTrying:
-            return
-
-        def on_discovery_err(failure):
-            failure.trap(MasterNotFoundError)
-            log.msg("txredisapi: Can't get address from Sentinel: {0}".format(failure.value))
-            reactor.callLater(self.delay, self.try_to_connect, connector)
-            self.resetDelay()
-
-        def on_master_addr(addr):
-            if self._current_master_addr is not None and \
-               self._current_master_addr != addr:
-                self.resetDelay()
-                # master has changed, dropping all alive connections
-                for conn in self.pool:
-                    conn.transport.loseConnection()
-
-            self._current_master_addr = addr
-            connector.host, connector.port = addr
-            if nodelay:
-                connector.connect()
-            else:
-                self.retry(connector)
-
-        def on_slave_addrs(addrs):
-            if addrs:
-                connector.host, connector.port = addrs[self._slave_no % len(addrs)]
-                self._slave_no += 1
-                if nodelay:
-                    connector.connect()
-                else:
-                    self.retry(connector)
-            else:
-                log.msg("txredisapi: No slaves discovered, falling back to master")
-                self.try_to_connect(connector, force_master=True, nodelay=True)
-
-        if self.is_master or force_master:
-            self.sentinel_manager.discover_master(self.service_name) \
-                .addCallbacks(on_master_addr, on_discovery_err)
+    def connect(self, protocolFactory):
+        if self.factory.is_master:
+            d = self._discover_master()
         else:
-            self.sentinel_manager.discover_slaves(self.service_name) \
-                .addCallback(on_slave_addrs)
+            d = self._discover_slave()
+
+        return d.addCallback(self._connect, protocolFactory)
+
+    def _discover_master(self):
+        d = self.factory.sentinel_manager \
+                .discover_master(self.factory.service_name)
+        return d.addCallbacks(self._master_addr, self._discovery_failed)
+
+    def _master_addr(self, addr):
+        if self._current_master_addr is not None and \
+           self._current_master_addr != addr:
+            # master has changed, dropping all alive connections
+            for conn in self.factory.pool:
+                conn.transport.loseConnection()
+
+        self._current_master_addr = addr
+        return addr
+
+    def _discovery_failed(self, failure):
+        failure.trap(MasterNotFoundError)
+        log.msg("txredisapi: Can't get address from Sentinel: {0}".format(failure.value))
+        return failure
+
+    def _discover_slave(self):
+        d = self.factory.sentinel_manager \
+                .discover_slaves(self.factory.service_name)
+        return d.addCallback(self._slave_addr)
+
+    def _slave_addr(self, addrs):
+        if not addrs:
+            log.msg("txredisapi: No slaves discovered, falling back to master")
+            return self._discover_master()
+
+        addr = addrs[self._slave_no % len(addrs)]
+        self._slave_no += 1
+        return addr
+
+    def _connect(self, addr, protocolFactory):
+        host, port = addr
+        endpoint = _makeEndpoint(host, port, self.factory.maxDelay)
+        return endpoint.connect(protocolFactory)
 
 
 class Sentinel(object):
@@ -2788,11 +3065,8 @@ class Sentinel(object):
         return result
 
     @staticmethod
-    def _connect_factory_and_return_handler(factory, poolsize):
-        for _ in range(poolsize):
-            # host and port will be rewritten by try_to_connect
-            connector = Connector("0.0.0.0", None, factory, factory.maxDelay, None, reactor)
-            factory.try_to_connect(connector, nodelay=True)
+    def _connect_factory_and_return_handler(factory):
+        factory.startConnecting(_SentinelEndpoint(factory))
         return factory.handler
 
     def master_for(self, service_name, factory_class=SentinelConnectionFactory,
@@ -2800,14 +3074,14 @@ class Sentinel(object):
         factory = factory_class(sentinel_manager=self, service_name=service_name,
                                 is_master=True, uuid=None, dbid=dbid,
                                 poolsize=poolsize, **connection_kwargs)
-        return self._connect_factory_and_return_handler(factory, poolsize)
+        return self._connect_factory_and_return_handler(factory)
 
     def slave_for(self, service_name, factory_class=SentinelConnectionFactory,
                   dbid=None, poolsize=1, **connection_kwargs):
         factory = factory_class(sentinel_manager=self, service_name=service_name,
                                 is_master=False, uuid=None, dbid=dbid,
                                 poolsize=poolsize, **connection_kwargs)
-        return self._connect_factory_and_return_handler(factory, poolsize)
+        return self._connect_factory_and_return_handler(factory)
 
 
 __all__ = [
