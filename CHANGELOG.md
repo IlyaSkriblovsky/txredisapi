@@ -1,6 +1,6 @@
 # Changelog
 
-## Release 1.6.0 (UNRELEASED)
+## Release 1.6.0 (2026-10-09)
 
 ### Bugfixes
 
