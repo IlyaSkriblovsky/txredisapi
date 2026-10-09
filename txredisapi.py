@@ -460,37 +460,33 @@ class BaseRedisProtocol(LineReceiver):
 
     def tryConvertData(self, data):
         # The hiredis reader implicitly returns integers
-        if isinstance(data, int):
+        if isinstance(data, (int, float)):
             return data
         if isinstance(data, list):
             return [self.tryConvertData(x) for x in data]
-        el = None
-        if self.convertNumbers:
-            if data:
-                num_data = data
-                try:
-                    if isinstance(data, bytes):
-                        num_data = data.decode()
-                except UnicodeError:
-                    pass
-                else:
-                    if num_data[0] in _NUM_FIRST_CHARS:  # Most likely a number
-                        try:
-                            el = int(num_data) if num_data.find('.') == -1 \
-                                else float(num_data)
-                        except ValueError:
-                            pass
+        if self.convertNumbers and data:
+            num_data = data
+            try:
+                if isinstance(data, bytes):
+                    num_data = data.decode()
+            except UnicodeError:
+                pass
+            else:
+                if num_data[0] in _NUM_FIRST_CHARS:  # Most likely a number
+                    try:
+                        if '.' in num_data:
+                            return float(num_data)
+                        return int(num_data)
+                    except ValueError:
+                        pass
 
-        if el is None:
-            el = data
-            if self.charset is not None:
-                try:
-                    el = data.decode(self.charset)
-                except UnicodeDecodeError:
-                    pass
-                except AttributeError:
-                    el = data
-        return el
+        if self.charset is not None:
+            try:
+                return data.decode(self.charset)
+            except (UnicodeDecodeError, AttributeError):
+                pass
+
+        return data
 
     def handleMultiBulkElement(self, element):
         self.multi_bulk.append(element)

@@ -17,7 +17,7 @@ def test_setget():
     key = 'test'
     conn = yield redis.Connection(HOST, PORT)
     start = time.time()
-    for i in xrange(N):
+    for i in range(N):
         yield conn.set(key, 'test_data')
         yield conn.get(key)
     print("done set-get: %.4fs." % ((time.time() - start) / N))
@@ -28,9 +28,9 @@ def test_lrange():
     key = 'test_list'
     list_length = 1000
     conn = yield redis.Connection(HOST, PORT)
-    yield defer.DeferredList([conn.lpush(key, str(i)) for i in xrange(list_length)])
+    yield defer.DeferredList([conn.lpush(key, str(i)) for i in range(list_length)])
     start = time.time()
-    for i in xrange(N):
+    for i in range(N):
         yield conn.lrange(key, 0, 999)
     print("done lrange: %.4fs." % ((time.time() - start) / N))
 
