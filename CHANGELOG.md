@@ -19,14 +19,20 @@
 - The reconnection delay is reset after a successful connection instead of
   growing up to `maxDelay` and staying there forever
 
+- A connection that is dropped before it becomes usable - a Sentinel master
+  that turns out to have the wrong role, for one - no longer resets the
+  backoff, so such a server is not reconnected to in a tight loop
+
+- `whenConnected()` of the protocol fires right away when the connection is
+  already up and usable, instead of returning a Deferred that never fires
+
 ### Incompatible changes
 
 - Connections are maintained by
   `twisted.application.internet.ClientService` now, and `RedisFactory` is no
   longer a `ReconnectingClientFactory`. Code connecting a factory on its own
   with `reactor.connectTCP()` or `twisted.application.internet.TCPClient` has
-  to use `factory.startConnecting(endpoint)` or its own
-  `ClientService(endpoint, factory)` instead - see `examples/subscriber.py`
+  to use `factory.startConnecting(endpoint)` instead - see `examples/subscriber.py`
 
 - `factory.continueTrying = False` is replaced by `factory.stopTrying()`;
   `retry()`, `resetDelay()` and `delay` are gone. `maxDelay`, `initialDelay`,

@@ -38,6 +38,7 @@ from twisted.application.internet import ClientService
 from twisted.internet import defer, ssl
 from twisted.internet import protocol
 from twisted.internet import reactor
+from twisted.internet import task
 from twisted.internet.endpoints import HostnameEndpoint, UNIXClientEndpoint
 from twisted.internet.interfaces import IStreamClientEndpoint
 from twisted.protocols import basic
@@ -284,9 +285,16 @@ class BaseRedisProtocol(LineReceiver):
 
         self._waiting_for_connect = []
         self._waiting_for_disconnect = []
+        # BaseProtocol.makeConnection() sets self.connected before
+        # connectionMade() even starts, so it says nothing about the
+        # connection being usable; this does
+        self._ready = False
 
 
     def whenConnected(self):
+        if self._ready:
+            return defer.succeed(self)
+
         d = defer.Deferred()
         self._waiting_for_connect.append(d)
         return d
@@ -332,12 +340,14 @@ class BaseRedisProtocol(LineReceiver):
                 return None
 
         self.connected = 1
+        self._ready = True
         self._waiting_for_connect, dfrs = [], self._waiting_for_connect
         for d in dfrs:
             d.callback(self)
 
     def connectionLost(self, why):
         self.connected = 0
+        self._ready = False
         self.script_hashes.clear()
 
         self._waiting_for_disconnect, dfrs = [], self._waiting_for_disconnect
@@ -2290,6 +2300,38 @@ def _makeEndpoint(host, port, connectTimeout=None, ssl_context_factory=None):
     return endpoint
 
 
+class _SlotFactory(object):
+    """
+    Hands out the protocols of a RedisFactory and tells a pool slot when the
+    connection of one of them is lost.
+
+    The protocol can't be relied on for that: overriding connectionLost()
+    without chaining to the base one is a common thing to do in a protocol
+    written for a SubscriberFactory, and it would leave the slot waiting for a
+    notification that never comes.
+    """
+
+    def __init__(self, factory, slot):
+        self.factory = factory
+        self.slot = slot
+
+    def buildProtocol(self, addr):
+        protocol = self.factory.buildProtocol(addr)
+        connectionLost = protocol.connectionLost
+
+        def notify(reason):
+            try:
+                return connectionLost(reason)
+            finally:
+                self.slot._connectionLost(protocol)
+
+        protocol.connectionLost = notify
+        return protocol
+
+    def __getattr__(self, item):
+        return getattr(self.factory, item)
+
+
 class _PoolSlot(object):
     """
     A single connection of a RedisFactory's pool.
@@ -2303,17 +2345,21 @@ class _PoolSlot(object):
         self.factory = factory
         self.reconnect = reconnect
         self.protocol = None
-        self.service = ClientService(endpoint, factory,
-                                     retryPolicy=factory.retryDelay,
+        self.rejected = 0
+        self.service = ClientService(endpoint, _SlotFactory(factory, self),
+                                     retryPolicy=self._retryDelay,
                                      prepareConnection=self._prepareConnection)
 
     def start(self):
-        self.service.startService()
         if not self.reconnect:
             # Nothing is going to retry, so a failed attempt is final and has
-            # to be reported instead of leaving the caller waiting forever
+            # to be reported instead of leaving the caller waiting forever.
+            # Registered before the service is started because an endpoint
+            # that fails synchronously would consume the first failure
             self.service.whenConnected(failAfterFailures=1) \
                 .addErrback(self._connectionFailed)
+
+        self.service.startService()
 
     def stopTrying(self):
         """
@@ -2321,9 +2367,21 @@ class _PoolSlot(object):
         stops for good once it is closed.
         """
         self.reconnect = False
-        if self.protocol is None:
-            return self.service.stopService()
-        return defer.succeed(None)
+        if self.protocol is not None:
+            return defer.succeed(None)
+
+        # Stopping the service cancels the attempt in progress. Called from
+        # connectionMade of a connection that has just been established, that
+        # would cancel an attempt the endpoint is still finishing up, so give
+        # the reactor a chance to complete it first
+        return task.deferLater(reactor, 0, self._stopIfIdle)
+
+    def _stopIfIdle(self):
+        if self.protocol is not None:
+            # connected in the meantime: a live connection is left alone
+            return None
+
+        return self.service.stopService()
 
     def stop(self):
         """
@@ -2332,9 +2390,21 @@ class _PoolSlot(object):
         self.reconnect = False
         return self.service.stopService()
 
+    def _retryDelay(self, attempt):
+        # ClientService forgets the failed attempts as soon as a transport is
+        # established, but a connection that is dropped before it becomes
+        # usable (a Sentinel master with the wrong role, ...) must not reset
+        # the backoff or we would reconnect in a tight loop
+        return self.factory.retryDelay(max(attempt, self.rejected))
+
     def _prepareConnection(self, protocol):
         self.protocol = protocol
-        protocol.whenDisconnected().addCallback(self._connectionLost)
+        # cleared as soon as the connection turns out to be usable
+        self.rejected += 1
+        protocol.whenConnected().addCallback(self._connectionUsable)
+
+    def _connectionUsable(self, protocol):
+        self.rejected = 0
 
     def _connectionLost(self, protocol):
         self.protocol = None
@@ -2352,12 +2422,20 @@ class _PoolSlot(object):
         return None
 
     def _reportConnectionFailure(self, failure):
-        self.stop()
-
         msg = "Redis error: could not connect: %s" % failure.getErrorMessage()
-        self.factory.connectionError(msg)
+
         if self.factory.isLazy:
+            # The handler is already in the caller's hands, so the connections
+            # of the other slots stay usable and there is someone to close them
+            self.stop()
             log.msg(msg)
+        else:
+            # The pool will never be complete, so nobody is ever going to get
+            # the handler - and nobody would be able to close the connections
+            # the other slots have made
+            self.factory.disconnect()
+
+        self.factory.connectionError(msg)
 
 
 class RedisFactory(protocol.Factory):
@@ -2413,6 +2491,10 @@ class RedisFactory(protocol.Factory):
     def startConnecting(self, endpoint):
         """
         Open and maintain poolsize connections to the given endpoint.
+
+        This is the only supported way of connecting a factory: stopTrying(),
+        disconnect(), quit() and shutdown() act on the connections started
+        here and can't stop a ClientService created somewhere else.
         """
         for _ in range(self.poolsize):
             slot = _PoolSlot(self, endpoint, self.reconnect)
@@ -2442,8 +2524,8 @@ class RedisFactory(protocol.Factory):
                                 consumeErrors=True)
 
         def loseRemainingConnections(_):
-            # connections that belong to no slot, i.e. of a factory driven by
-            # a ClientService of its own
+            # stopping a slot closes its connection; this is for any
+            # connection that outlived its slot
             for conn in list(self.pool):
                 conn.transport.loseConnection()
             return self.waitForEmptyPool()
@@ -2455,8 +2537,15 @@ class RedisFactory(protocol.Factory):
         Seconds to wait before the given consecutive connection attempt.
         Used as ClientService's retryPolicy.
         """
-        delay = min(self.initialDelay * (self.factor ** (attempt - 1)),
-                    self.maxDelay)
+        try:
+            # the exponent is clamped like in Twisted's own backoffPolicy():
+            # maxDelay caps the delay long before the power overflows, and a
+            # long enough outage would reach that point
+            delay = min(self.initialDelay * (self.factor ** min(100, attempt - 1)),
+                        self.maxDelay)
+        except OverflowError:
+            delay = self.maxDelay
+
         if self.jitter:
             delay = random.normalvariate(delay, delay * self.jitter)
         return max(0, delay)
@@ -2482,6 +2571,11 @@ class RedisFactory(protocol.Factory):
     def addConnection(self, conn):
         if self.disconnectCalled:
             conn.transport.loseConnection()
+            return
+
+        if not conn.connected:
+            # died during the reactor turn _connectionReady waits for; adding
+            # it would leave a dead connection in the pool forever
             return
 
         conn.whenDisconnected().addCallback(self.delConnection)

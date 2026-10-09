@@ -25,7 +25,6 @@ from __future__ import print_function
 
 import txredisapi as redis
 
-from twisted.application.internet import ClientService, backoffPolicy
 from twisted.application import service
 from twisted.internet import reactor
 from twisted.internet.endpoints import HostnameEndpoint
@@ -59,8 +58,20 @@ class MyFactory(redis.SubscriberFactory):
     protocol = MyProtocol
 
 
+class RedisService(service.Service):
+    """
+    Keeps the connection up for as long as the application runs. The factory
+    reconnects and backs off on its own; disconnect() stops it for good.
+    """
+
+    def startService(self):
+        self.factory = MyFactory()
+        self.factory.startConnecting(
+            HostnameEndpoint(reactor, "127.0.0.1", 6379))
+
+    def stopService(self):
+        return self.factory.disconnect()
+
+
 application = service.Application("subscriber")
-endpoint = HostnameEndpoint(reactor, "127.0.0.1", 6379)
-srv = ClientService(endpoint, MyFactory(),
-                    retryPolicy=backoffPolicy(maxDelay=120))
-srv.setServiceParent(application)
+RedisService().setServiceParent(application)

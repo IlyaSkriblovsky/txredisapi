@@ -1,5 +1,5 @@
 import sys
-from twisted.internet import defer, reactor
+from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import Factory
 from twisted.trial.unittest import TestCase
 
@@ -104,6 +104,18 @@ class FakeRedisFactory(Factory):
     protocol = FakeRedisProtocol
 
     role = ["master", 0, ["127.0.0.1", 63791, 0]]
+
+
+class TrackingRedisFactory(FakeRedisFactory):
+    """Fake server that keeps every protocol it has built."""
+
+    def __init__(self):
+        self.protocols = []
+
+    def buildProtocol(self, addr):
+        protocol = FakeRedisFactory.buildProtocol(self, addr)
+        self.protocols.append(protocol)
+        return protocol
 
 
 class FakeAuthenticatedRedisFactory(FakeRedisFactory):
@@ -298,16 +310,27 @@ class TestConnectViaSentinel(TestCase):
         return d
 
     @defer.inlineCallbacks
+    def _waitFor(self, predicate, message):
+        deadline = reactor.seconds() + 5
+        while not predicate():
+            if reactor.seconds() > deadline:
+                self.fail(message)
+            yield self._delay(0.02)
+
+    def _pool_is_at(self, conn, port):
+        pool = conn._factory.pool
+        return len(pool) == 3 and all(p.transport.getPeer().port == port
+                                      for p in pool)
+
+    @defer.inlineCallbacks
     def test_drop_all_when_master_changes(self):
         # When master address change detected, factory should drop and reestablish
         # all its connections
 
         conn = self.client.master_for("test", poolsize=3)
         yield conn.role()  # wait for connection
-
-        addrs = [proto.transport.getPeer() for proto in conn._factory.pool]
-        self.assertTrue(len(addrs), 3)
-        self.assertTrue(all(addr.port == self.master_port for addr in addrs))
+        yield self._waitFor(lambda: self._pool_is_at(conn, self.master_port),
+                            "the pool has not been filled from the master")
 
         # Change master address at sentinel and change role of the slave to master
         self.fake_sentinel.master_addr = ("127.0.0.1", self.slave_port)
@@ -316,11 +339,9 @@ class TestConnectViaSentinel(TestCase):
         # Force reconnection of one connection
         conn._factory.pool[0].transport.loseConnection()
 
-        # After a short time all connections should be to the new master
-        yield self._delay(0.2)
-        addrs = [proto.transport.getPeer() for proto in conn._factory.pool]
-        self.assertTrue(len(addrs), 3)
-        self.assertTrue(all(addr.port == self.slave_port for addr in addrs))
+        # All of the connections should end up at the new master
+        yield self._waitFor(lambda: self._pool_is_at(conn, self.slave_port),
+                            "the connections have not moved to the new master")
 
         yield conn.disconnect()
 
@@ -354,4 +375,45 @@ class TestAuthViaSentinel(TestCase):
         conn = self.client.master_for("test", password='secret!')
         reply = yield conn.role()
         self.assertEqual(reply[0], "master")
+        yield conn.disconnect()
+
+
+class TestSentinelRetries(TestCase):
+
+    master_port = 36379
+    sentinel_port = 46379
+
+    def setUp(self):
+        self.fake_master = TrackingRedisFactory()
+        self.fake_master.role = ["slave", "127.0.0.1", 63790, "connected", 0]
+        self.master_listener = reactor.listenTCP(self.master_port,
+                                                 self.fake_master)
+
+        self.fake_sentinel = FakeSentinelFactory()
+        self.fake_sentinel.master_addr = ("127.0.0.1", self.master_port)
+        self.fake_sentinel.slave_addrs = []
+        self.fake_sentinel.slave_flags = []
+        self.sentinel_listener = reactor.listenTCP(self.sentinel_port,
+                                                   self.fake_sentinel)
+
+        self.client = Sentinel([("127.0.0.1", self.sentinel_port)])
+        self.client.discovery_timeout = 1
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.client.disconnect()
+        yield self.sentinel_listener.stopListening()
+        yield self.master_listener.stopListening()
+
+    @defer.inlineCallbacks
+    def test_wrong_role_backs_off(self):
+        # A node that never has the role we are looking for is dropped by
+        # SentinelRedisProtocol as soon as it replies to ROLE. Such a
+        # connection must not reset the backoff, or we would reconnect to it
+        # in a tight loop
+        conn = self.client.master_for("test")
+
+        yield task.deferLater(reactor, 0.5, lambda: None)
+        self.assertLess(len(self.fake_master.protocols), 5)
+
         yield conn.disconnect()
