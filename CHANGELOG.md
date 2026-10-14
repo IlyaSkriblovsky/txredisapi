@@ -1,5 +1,11 @@
 # Changelog
 
+## Release 1.6.1 (UNRELEASED)
+
+### Optimizations
+
+- Optimization for the case of charset=None and convertNumbers=False.
+
 ## Release 1.6.0 (2026-10-09)
 
 ### Bugfixes
